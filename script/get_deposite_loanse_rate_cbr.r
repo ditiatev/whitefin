@@ -1,5 +1,5 @@
 
-get_deposite_ruble_30_cbr <- function() {
+get_deposite_ruble_30_cbr <- function(...) {
         
         #seatings
         library(xlsx)
@@ -11,7 +11,7 @@ get_deposite_ruble_30_cbr <- function() {
         download_file <- function(locDestFile = "./data/deposits_30_e.xlsx",
                                   fileUrl = "https://www.cbr.ru/vfs/eng/statistics/pdko/int_rat/deposits_30_e.xlsx",
                                   freshTimeMin = 24*60) {
-                
+
                 if (!file.exists(locDestFile)) {
                         download.file(fileUrl,
                                       destfile = locDestFile,
@@ -27,7 +27,7 @@ get_deposite_ruble_30_cbr <- function() {
                         
                         
         }
-        download_file()
+        download_file(...)
         
         # read file
         startRow <- 5
@@ -36,7 +36,8 @@ get_deposite_ruble_30_cbr <- function() {
                             header = T,
                             startRow = startRow,
                             encoding = "UTF-8")
-
+        
+        # check file format / rename colomns
         col_rename <- function(df_dep) {
                 coln_file <- colnames(df_dep)
                 coln_file_formate <-
@@ -108,7 +109,7 @@ get_deposite_ruble_30_cbr <- function() {
         df_dep
 }
 
-get_loanse_ruble_30_cbr <- function() {
+get_loanse_ruble_30_cbr <- function(...) {
         
         #seatings
         library(xlsx)
@@ -116,7 +117,7 @@ get_loanse_ruble_30_cbr <- function() {
         library(dplyr)
         setwd("C:/R/Fin/whitefin")
         
-        get_ind_loanse_ruble_30_cbr <- function() {
+        get_ind_loanse_ruble_30_cbr <- function(...) {
 
                 # download file from www.cbr.ru
                 download_file <- function(locDestFile = "./data/loans_ind_30_e.xlsx",
@@ -138,7 +139,7 @@ get_loanse_ruble_30_cbr <- function() {
                         
                         
                 }
-                download_file()
+                download_file(...)
                 
                 # read file
                 startRow <- 5
@@ -150,6 +151,7 @@ get_loanse_ruble_30_cbr <- function() {
                         encoding = "UTF-8"
                 )
                 
+                # check file format / rename colomns
                 col_rename <- function(loans_ind_30_e) {
                         coln_file <- colnames(loans_ind_30_e)
                         coln_file_formate <-
@@ -215,7 +217,7 @@ get_loanse_ruble_30_cbr <- function() {
                 loans_ind_30_e
         }
         
-        get_firm_loanse_ruble_30_cbr <- function() {
+        get_firm_loanse_ruble_30_cbr <- function(...) {
 
                 # download file from www.cbr.ru
                 download_file <- function(locDestFile = "./data/loans_nonfin_30_e.xlsx",
@@ -237,7 +239,7 @@ get_loanse_ruble_30_cbr <- function() {
                         
                         
                 }
-                download_file()
+                download_file(...)
                 
                 # read file
                 startRow <- 5
@@ -249,6 +251,7 @@ get_loanse_ruble_30_cbr <- function() {
                         encoding = "UTF-8"
                 )
                 
+                # check file format / rename colomns
                 col_rename <- function(loans_firm_30_e) {
                         coln_file <- colnames(loans_firm_30_e)
                         coln_file_formate <-
