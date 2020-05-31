@@ -1,4 +1,4 @@
-
+# Get deposite rates from www.cbr.ru
 get_deposite_ruble_30_cbr <- function(...) {
         
         #seatings
@@ -109,6 +109,7 @@ get_deposite_ruble_30_cbr <- function(...) {
         df_dep
 }
 
+# Get loanse rates from www.cbr.ru
 get_loanse_ruble_30_cbr <- function(...) {
         
         #seatings
