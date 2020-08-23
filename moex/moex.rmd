@@ -1,0 +1,1036 @@
+---
+title: "moex"
+author: "ditiatev"
+date: "21 07 2020"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+options(digits = 4)
+```
+
+```{r, message=FALSE}
+library(statsr)
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+library(reshape2)
+library(BAS)
+library(GGally)
+
+```
+
+```{r}
+df_daily <- read.csv("./data/dailystrategydata.csv", encoding = "UTF-8")
+df_daily <- df_daily[,c(2,8,15,32)]
+names(df_daily) <- c("position","date","timeclose","profit")
+str(df_daily)
+```
+
+```{r}
+df_daily <- df_daily %>%
+  mutate(date = as.Date(date, format = '%d.%m.%Y')) %>%
+  mutate(date = as.POSIXct(date, format = '%d.%m.%Y')) %>%
+  mutate(profit = gsub("%", "", profit)) %>%
+  mutate(profit = gsub(",", ".", profit)) %>%
+  mutate(profit = as.numeric(profit)) %>%
+  mutate(year = as.factor(year(date))) %>%
+  mutate(month = as.factor(month(date))) %>%
+  mutate(wday = as.factor(wday(date, week_start = 1))) %>%
+  mutate(timeclose = hms(df_daily$timeclose)) %>%
+  mutate(tradestop = case_when(timeclose$hour == 22 ~ F, T ~ T))
+```
+
+
+```{r}
+summary(df_daily)
+```
+
+
+# Посмотрим на распределение прибыли.
+
+```{r}
+ggplot(data = df_daily, aes(x = profit, fill= yday(date))) +
+        geom_density(aes(x=profit), color="green4", fill="lightgreen", alpha=.3, )
+```
+
+Видим 2 пика, это не совсем ожидано. Пытаемся разобраться в чем дело.
+
+
+
+
+## Посмотрим как распрделяется прибыль по годам.
+
+```{r}
+df_daily %>%
+        group_by(year) %>%
+        summarise(x_bar = mean(profit), x_sd = sd(profit), x_median = median(profit), n = n())
+```
+
+```{r}
+df_daily %>%
+
+        ggplot(aes(x = profit)) +
+        geom_density(aes(x=profit, fill = year), alpha=.3) +
+        facet_wrap(c('year'))
+```
+
+Продолжаем видеть 2 пика, основной и дополнительный.
+
+
+## Посмотрим как распрделяется прибыль по месяцам.
+
+```{r}
+df_daily %>%
+        group_by(month) %>%
+        summarise(x_bar = mean(profit), x_sd = sd(profit), x_median = median(profit), n = n())
+```
+
+```{r}
+df_daily %>%
+
+        ggplot(aes(x = profit)) +
+        geom_density(aes(x=profit, fill = month), alpha=.3) +
+        facet_wrap(c('month'))
+```
+
+Почти на кажом графике явно выделяются по 2 вершины.
+
+
+## Посмотрим как распрделяется прибыль по дням недели.
+
+```{r}
+df_daily %>%
+        group_by(wday) %>%
+        summarise(x_bar = mean(profit), x_sd = sd(profit), x_median = median(profit), n = n())
+```
+
+```{r}
+df_daily %>%
+
+        ggplot(aes(x = profit)) +
+        geom_density(aes(x=profit, fill = wday), alpha=.3) +
+        facet_wrap(c('wday'))
+```
+
+
+
+
+## Посмотрим на влияние позиции.
+
+```{r}
+df_daily %>%
+        group_by(position) %>%
+        summarise(x_bar = mean(profit), x_sd = sd(profit), x_median = median(profit), n = n())
+```
+
+```{r}
+df_daily %>%
+
+        ggplot(aes(x = profit)) +
+        geom_density(aes(x=profit, fill = position), alpha=.3)# +
+        #facet_wrap(c('position'))
+```
+
+## Посмотрим на прекращения торговли.
+
+```{r}
+df_daily %>%
+        group_by(tradestop) %>%
+        summarise(x_bar = mean(profit), x_sd = sd(profit), x_median = median(profit), n = n())
+```
+
+```{r}
+df_daily %>%
+
+        ggplot(aes(x = profit)) +
+        geom_density(aes(x=profit, fill = tradestop), alpha=.3) +
+        facet_wrap(c('tradestop'))
+```
+Распределение доходности трейдстопов (фактические данные)
+ 
+```{r}
+df_daily %>%
+  filter(tradestop == T) %>%
+  filter(profit < 0) %>%
+  ggplot(aes(x = profit)) +
+  geom_density(aes(x=profit, fill = tradestop), alpha=.3) +
+  facet_wrap(c('tradestop'))
+```
+Распределение доходности полных дней (фактические данные)
+
+```{r}
+df_daily %>%
+  filter(tradestop == F) %>%
+  ggplot(aes(x = profit)) +
+  geom_density(aes(x=profit, fill = tradestop), alpha=.3) +
+  facet_wrap(c('tradestop'))
+```
+
+
+# Попробуем раздельно отмоделировать трейдстоп и целый торговый день
+## ТрейдСтоп
+
+### Посмотрим исторические данные трейдстопа.
+#### By all period
+```{r}
+df_daily %>%
+  group_by(year,month) %>%
+  mutate(n = n()) %>%
+  filter(tradestop == TRUE) %>%
+  summarise(n_stop = n(), n = n[1], freq = n_stop/n) %>%
+  #print() %>%
+  
+  ggplot(aes(x = freq)) +
+  geom_density(aes(x=freq), color="darkred", fill="#FF6666", alpha=.3) +
+  ggtitle("Trade stop probability calculated by calendar month")
+```
+
+Выведем статистику.
+
+```{r}
+df_daily %>%
+  group_by(year,month) %>%
+  mutate(n = n()) %>%
+  filter(tradestop == TRUE) %>%
+  summarise(n_stop = n(), n = n[1], freq = n_stop/n) %>%
+  ungroup() %>%
+  summarise(min = min(freq),
+            q5pers = quantile(freq,0.05,type = 1),
+            q1 =  quantile(freq,0.25,type = 1),
+            median = median(freq),
+            q3 = quantile(freq,0.75,type = 1),
+            q95pers = quantile(freq,0.95,type = 1),
+            max = max(freq),
+            mean = mean(freq),
+            sd = sd(freq),
+            n = n())
+```
+
+#### By month
+```{r}
+df_daily %>%
+  group_by(year,month) %>%
+  mutate(n = n()) %>%
+  filter(tradestop == TRUE) %>%
+  summarise(n_stop = n(), n = n[1], freq = n_stop/n) %>%
+  #print() %>%
+  
+  ggplot(aes(x = freq)) +
+  geom_density(aes(x=freq), color="darkred", fill="#FF6666", alpha=.3) +
+  facet_wrap(c('year')) +
+  ggtitle("Trade stop probability calculated by calendar month")
+```
+
+
+#### Looks on the trend
+```{r}
+df_daily %>%
+  group_by(year,month) %>%
+  mutate(n = n()) %>%
+  filter(tradestop == TRUE) %>%
+  summarise(n_stop = n(), n = n[1], freq = n_stop/n, date = ymd(paste(year, month, "01", sep= ' '))) %>%
+  
+  ggplot(aes(x = date, y = freq)) +
+  geom_line(color="darkred") +
+  ggtitle("Trade stop probability calculated by calendar month")
+```
+
+В общем и целом, видим достаточно однородные данные. Наиболее ожидаемая вероятность трейдстопа в районе 18.2%.
+Пики 8, 11, 14, 15, 16 годов серьезно повышают неопределенность в вероятности трейдстопа.
+
+Также они добавляют и к самой вероятность трейдстопа в среднем 4,5%, повышая ее до 22.8%, что при заданном риск менеджменте (как я понимаю) в 1% соответсвует **снижению доходности на 4,5% капитала в день.** Жестко.
+
+Т.е. если мы отторгуем 100 дней, то в среднем мы потерям 1% капитала 23 раза, против 18 раз если бы небыло пик. Это очень грубо, но картину дает.
+
+# Собственно если найти факторы влияющие на пики, можно очень серьезно повысить ожидаему доходность модели. Можешь накинуть идеи если такие имеются, я их оттестю.
+
+# Смоделируем вероятность трейдстопа по имеющимся данным за весь период.
+
+```{r}
+df_year <- df_daily
+
+shape1 <- nrow(df_year[which(df_year$tradestop == T),])
+shape2 <- nrow(df_year[which(df_year$tradestop == F),])
+sim <- data.frame(prob = rbeta(2626,shape1,shape2))
+summary(sim)
+
+ggplot(data = sim) +
+  geom_density(aes(x=prob), color="darkred", fill="#FF6666", alpha=.3)
+
+print(paste0("Вероятность трейдстопа ниже веротяности в 18.18% = ", sum(sim$prob < 0.1818182)/length(sim$prob)*100,"%"))
+```
+
+## For last 3 years
+
+```{r}
+df_year <- df_daily %>%
+  filter(year %in% c(2016,2017,2018))
+
+shape1 <- nrow(df_year[which(df_year$tradestop == T),])
+shape2 <- nrow(df_year[which(df_year$tradestop == F),])
+sim <- data.frame(prob = rbeta(100000,shape1,shape2))
+summary(sim)
+
+ggplot(data = sim) +
+  geom_density(aes(x=prob), color="darkred", fill="#FF6666", alpha=.3)
+
+print(paste0("Вероятность трейдстопа ниже веротяности в 18.18% = ", sum(sim$prob < 0.1818182)/length(sim$prob)*100,"%"))
+```
+
+## For crisis years 2008-2009 and 2014-2015
+
+```{r}
+df_year <- df_daily %>%
+  filter(year %in% c(2008,2009,2014,2015))
+
+shape1 <- nrow(df_year[which(df_year$tradestop == T),])
+shape2 <- nrow(df_year[which(df_year$tradestop == F),])
+sim <- data.frame(prob = rbeta(100000,shape1,shape2))
+summary(sim)
+
+ggplot(data = sim) +
+  geom_density(aes(x=prob), color="darkred", fill="#FF6666", alpha=.3)
+
+print(paste0("Вероятность трейдстопа ниже веротяности в 18.18% = ", sum(sim$prob < 0.1818182)/length(sim$prob)*100,"%"))
+```
+
+## For calm years 2010-2013, 2016-2018
+
+```{r}
+df_year <- df_daily %>%
+  filter(year %in% c(2010,2011,2012,2013,2016,2017,2018))
+
+shape1 <- nrow(df_year[which(df_year$tradestop == T),])
+shape2 <- nrow(df_year[which(df_year$tradestop == F),])
+sim <- data.frame(prob = rbeta(100000,shape1,shape2))
+summary(sim)
+
+ggplot(data = sim) +
+  geom_density(aes(x=prob), color="darkred", fill="#FF6666", alpha=.3)
+
+print(paste0("Вероятность трейдстопа ниже веротяности в 18.18% = ", sum(sim$prob < 0.1818182)/length(sim$prob)*100,"%"))
+rm(sim); rm(df_year)
+```
+
+Видно, что модель показывает себя надежнее в спокойное время, чем в кризисное. Отсюда вывод, что в модель стоит применять в спокойное время. 
+**Для прогнозирования доходности стоит применять показатели характеризующие кризисный период.** В краткосрочном, периодеб возможно, стоит обратить внимание на показатели, чарактеризующие негативные новости на рынке.
+
+## Далее посмотрим на изменчивость вероятности трейдстопа по скользящим средним.
+
+Создадим таблицу с данными по количеству стоптрейдов за предыдущие 21 дней.
+
+```{r}
+sliding_depth <- 90
+df_daily$tradestop <- as.integer(df_daily$tradestop)
+
+for (n in 1:sliding_depth) {
+  df_daily[,paste0("TSprevious",n)] <- c(rep(NA,n), head(df_daily$tradestop,-n))
+  #df_daily[,paste0("TSnext",n)] <- c(tail(df_daily$tradestop,-n), rep(NA,n))
+}
+
+for (n in 2:sliding_depth) {
+  #df_daily[,paste0("TSMAnext",n)] <- apply(df_daily[,paste0("TSnext",1:n)],1,sum,na.rm = T)
+  df_daily[,paste0("TSMAprevious",n)] <- apply(df_daily[,paste0("TSprevious",1:n)],1,sum,na.rm = F)
+}
+```
+
+Содадим функцию способную посчитать средние веростноти трейдстопа на основе бетта распределений по скользящим средним количеству трейдстопов на текущий день
+т.е. например заглядываем на 10 дней вперед смотрим количество трейдстопов и на этих данных моделируем распределение, затем по этому рапределению считаем среднее значение и его и записываем
+```{r}
+get_prob <- function(df,col_names) {
+  mean_rbeta <- function(x, col_name) {
+  # calculating sliding depth
+  n <- as.integer(sub("TSMAnext|TSMAprevious","",col_name))
+  # return mean of rbeta distribution
+  mean(rbeta(1000, shape1 = as.integer(x[col_name]), shape2 = n-as.integer(x[col_name])))
+  }
+  
+  for (col_name in col_names) {
+    df[,paste0("prob_",col_name)] <- apply(df_daily, 1, FUN = function(x) mean_rbeta(x,col_name))  
+  }
+  
+  df
+}
+```
+
+Посчитаем средние вероятности трейдстопа по скользящим средним. Применим созданную функцию.
+```{r, message=F,warning=F}
+#df_daily <- get_prob(df = df_daily, col_names = paste0("TSMAnext",2:sliding_depth))
+df_daily <- get_prob(df = df_daily, col_names = paste0("TSMAprevious",2:sliding_depth))
+```
+
+Посчитаем среднюю вероятность трейдстопа по всем скользящим.
+```{r}
+df_daily$probTS <- apply(df_daily[,paste0("prob_TSMAprevious",2:sliding_depth)],1,mean,na.rm = F)
+```
+
+```{r}
+index_ts <- which(df_daily$tradestop == T)
+ggplot() +
+  geom_density(data = df_daily[-index_ts,], aes(x=prob_TSMAprevious50), color = "darkgreen", fill="green", alpha=.3) +
+  geom_density(data = df_daily[index_ts,], aes(x=prob_TSMAprevious50), color = "darkred", fill="red", alpha=.3)
+```
+
+```{r}
+df_daily %>%
+  filter(!is.na(probTS)) %>%
+  ggplot() +
+  geom_boxplot(aes(y = prob_TSMAprevious30, x = as.factor(tradestop), color = as.factor(tradestop)))
+```
+
+```{r}
+df_tsprob <- df_daily %>%
+  group_by(tradestop) %>%
+  summarise(n = n()) %>%
+  mutate(freq = n/sum(n))
+
+df_tsprob <- df_tsprob$freq
+names(df_tsprob) <- c("tsYes","tsNo")
+df_tsprob
+```
+
+Создадим таблицу соответствия вероятности по скользящим с фактической вероятностью трейдстопа
+```{r}
+colomns <-paste0("prob_TSMAprevious",2:sliding_depth)
+df_tsmaprob <-  melt(data = df_daily, id.vars = c("tradestop"), measure.vars = colomns)
+colnames(df_tsmaprob)[2] <- "ma"
+df_qtsmaprob <- df_tsmaprob %>%
+  filter(!is.nan(value)) %>%
+  group_by(ma,tradestop) %>%
+  summarise(q25 = as.numeric(quantile(value,0.25,type = 1)),
+            q50 = as.numeric(quantile(value,0.5,type = 1)),
+            q75 = as.numeric(quantile(value,0.75,type = 1))) %>%
+  ungroup()
+
+colomns <- c("q25","q50","q75")
+
+df_q25 <- dcast(df_qtsmaprob, ma ~ tradestop, value.var = c("q25"))
+df_q50 <- dcast(df_qtsmaprob, ma ~ tradestop, value.var = c("q50"))
+df_q75 <- dcast(df_qtsmaprob, ma ~ tradestop, value.var = c("q75"))
+
+colnames(df_q25) <- c("ma","q0_25","q1_25")
+colnames(df_q50) <- c("ma","q0_50","q1_50")
+colnames(df_q75) <- c("ma","q0_75","q1_75")
+
+df_q <- merge(df_q25, df_q50, by.x = c("ma"), by.y = c("ma"), all = T)
+df_q <- merge(df_q, df_q75, by.x = c("ma"), by.y = c("ma"), all = T)
+
+df_ts <- merge(df_tsmaprob, df_q, by.x = c("ma"), by.y = c("ma"), all.x = T)
+
+df_ts <- df_ts %>%
+  filter(!is.nan(value)) %>%
+  mutate(n0_25 = if_else(value <= q0_25, 1, 0),
+         n1_25 = if_else(value <= q1_25, 1, 0),
+         n0_50 = if_else(value <= q0_50, 1, 0),
+         n1_50 = if_else(value <= q1_50, 1, 0),
+         n0_75 = if_else(value <= q0_75, 1, 0),
+         n1_75 = if_else(value <= q1_75, 1, 0),
+         n = 1) %>%
+  group_by(ma, tradestop) %>%
+  summarise(n0_25   = sum(n0_25),
+            n1_25   = sum(n1_25)-n0_25,
+            n0_50   = sum(n0_50)-n0_25-n1_25,
+            n1_50   = sum(n1_50)-n0_25-n1_25-n0_50,
+            n0_75   = sum(n0_75)-n0_25-n1_25-n0_50-n1_50,
+            n1_75   = sum(n1_75)-n0_25-n1_25-n0_50-n1_50-n0_75,
+            n       = sum(n)-    n0_25-n1_25-n0_50-n1_50-n0_75-n1_75,
+            q0_25 = q0_25[1],
+            q1_25 = q1_25[1],
+            q0_50 = q0_50[1],
+            q1_50 = q1_50[1],
+            q0_75 = q0_75[1],
+            q1_75 = q1_75[1])
+
+# transform to array
+
+vRowNames <- as.character(df_ts[which(df_ts$tradestop == 1),"ma"]$ma)
+vRowNames <- gsub("prob_TSMAprevious","MA",vRowNames)
+
+vColNames <- colnames(df_ts[,3:9])
+
+n_ts1 <- array(unlist(df_ts[which(df_ts$tradestop == 1),3:9]),
+               dim = c(length(vRowNames),length(vColNames)),
+               dimnames = list(vRowNames,vColNames))
+n_ts0 <- array(unlist(df_ts[which(df_ts$tradestop == 0),3:9]),
+               dim = c(length(vRowNames),length(vColNames)),
+               dimnames = list(vRowNames,vColNames))
+
+n_ts <- n_ts1 + n_ts0
+freq_ts <- n_ts1/n_ts
+
+vColNames <- colnames(df_ts[,10:15])
+q_ts <- array(unlist(df_ts[which(df_ts$tradestop == 0),10:15]),
+               dim = c(length(vRowNames),length(vColNames)),
+               dimnames = list(vRowNames,vColNames))
+
+prob_ts <- cbind(freq_ts,q_ts)
+prob_ts[9:14,]
+```
+
+Создадим функцию которая соотнесет вероятность по скользящим с фактической вероятностью
+```{r}
+fun_correlate_prob <- function(prob_ts,v_prob,ma) {
+
+  pr <- rep(prob_ts[ma-1,],length(v_prob))
+  dim(pr) <- c(13,length(v_prob))
+  df <- cbind(v_prob,data.frame(t(pr)))
+  
+  df <- df %>%
+    mutate(pr = case_when(v_prob <= X8 ~ X1,
+                        v_prob <= X9 ~ X2,
+                        v_prob <= X10 ~ X3,
+                        v_prob <= X11 ~ X4,
+                        v_prob <= X12 ~ X5,
+                        v_prob <= X13 ~ X6,
+                        TRUE ~ X7))
+  df$pr  
+}
+
+colomns <-paste0("prob_TSMAprevious",2:sliding_depth)
+for (colomn in colomns) {
+  v_prob <- df_daily[,colomn]
+  ma <- as.numeric(gsub("prob_TSMAprevious","",colomn))
+  
+  df_daily[,paste0("corprobMA",ma)]  <- fun_correlate_prob(prob_ts,v_prob,ma)
+}
+```
+
+Посчитаем среднюю соотнесенную фактическую вероятность
+```{r}
+df_daily$corprobTS <- apply(df_daily[,paste0("corprobMA",2:sliding_depth)],1,mean,na.rm = F)
+```
+
+Посмотрим
+
+```{r}
+index_ts <- which(df_daily$tradestop == T)
+ggplot() +
+  geom_density(data = df_daily[-index_ts,], aes(x=corprobTS), color = "darkgreen", fill="green", alpha=.3) +
+  geom_density(data = df_daily[index_ts,], aes(x=corprobTS), color = "darkred", fill="red", alpha=.3)
+```
+
+```{r}
+df_daily %>%
+  filter(!is.na(corprobTS)) %>%
+  ggplot() +
+  geom_boxplot(aes(y = corprobTS, x = as.factor(tradestop), color = as.factor(tradestop)))
+```
+
+```{r}
+df_profit_ts <- data.frame(n_cases = numeric(),
+                           freq_cases = numeric(),
+                           corptobTS = numeric(),
+                           realprobTS = numeric(),
+                           meanprof = numeric(),
+                           n_cases_between = numeric(),
+                           freq_cases_between = numeric(),
+                           mean_prof_between = numeric())
+for (prob in 1:50) {
+  # total
+  n_cases <- length(which(df_daily$corprobTS <= prob/100))
+  freq_cases <- round(n_cases/nrow(df_daily),3)*100
+  
+  index <- which(df_daily$corprobTS <= prob/100 & df_daily$tradestop == T)
+  real_prob <- length(index)/nrow(df_daily)
+  
+  index <- which(df_daily$corprobTS <= prob/100)
+  mean_prof <- round(mean(df_daily[index,"profit"]),3)
+  
+  # between
+  index <- which(df_daily$corprobTS <= prob/100 & df_daily$corprobTS > (prob-1)/100)
+  n_cases_between <- length(index)
+  freq_cases_between <- round(n_cases_between/nrow(df_daily),3)*100
+  mean_prof_between <- round(mean(df_daily[index,"profit"]),3)
+  
+  
+  df_profit_ts <- rbind(df_profit_ts,data.frame(n_cases = n_cases,
+                                                freq_cases = freq_cases,
+                                                corptobTS = prob,
+                                                realprobTS = real_prob,
+                                                meanprof = mean_prof,
+                                                n_cases_between = n_cases_between,
+                                                freq_cases_between = freq_cases_between,
+                                                mean_prof_between = mean_prof_between))
+  
+}
+
+#df_profit_ts$n_cases_between <- df_profit_ts[,"n_cases"]-c(0,df_profit_ts[1:(nrow(df_profit_ts)-1),"n_cases"])
+#df_profit_ts$freq_cases_between <- round(df_profit_ts$n_cases_between/nrow(df_daily),3)*100
+```
+
+
+
+
+```{r}
+prob <- 0.14
+index_less <- which(df_daily$probTS <= prob & df_daily$tradestop == T)
+index_more <- which(df_daily$probTS > prob & df_daily$tradestop == T)
+
+ggplot() +
+  geom_jitter(data = df_daily[index_less,], aes(x = date, y = tradestop), size = 1, shape=4, color = "darkred") +
+  geom_jitter(data = df_daily[index_more,], aes(x = date, y = tradestop), size = 1, shape=3, color = "darkgreen") +
+  scale_colour_manual(values = c("darkred", "darkgreen"), labels = c("Упустили", "Выявили"), name = "") +
+  theme_bw() +
+  theme(legend.position = c(1, 0), legend.justification = c(1.5, 0))
+```
+
+
+Удалим предыдущие "ненужные" колонки.
+```{r}
+#drops <- c(paste0("TSprevious",1:sliding_depth),
+#           paste0("TSMAprevious",2:sliding_depth),
+#           paste0("prob_TSMAprevious",2:sliding_depth))
+#df_daily <- df_daily[ , !(names(df_daily) %in% drops)]
+```
+
+
+```{r}
+# Exclude observations with missing values in the data set
+df_daily_no_na <- na.omit(df_daily)
+```
+
+### Carrying out the model selection
+
+Number of possible models.
+
+```{r}
+drops <- c("date","timeclose","year", "probTS","profit")
+n <- dim(df_daily_no_na)[2]-length(drops) - 1
+2^n
+```
+
+```{r}
+# original
+tradestop_baslm <- bas.lm(tradestop ~ .,
+                          data = df_daily_no_na[ , !(names(df_daily_no_na) %in% drops)],
+                          prior = "BIC", 
+                          modelprior = uniform(),
+                          method = "MCMC", 
+                          MCMC.iterations = 10 ^ 5
+                          )
+```
+
+```{r}
+plot(tradestop_baslm, which = 1, add.smooth = F, 
+     ask = F, pch = 16, sub.caption="", caption="")
+abline(a = 0, b = 0, col = "darkgrey", lwd = 2)
+```
+
+```{r}
+summary(tradestop_baslm)
+```
+
+```{r}
+image(tradestop_baslm, rotate = F)
+```
+
+```{r}
+plot(tradestop_baslm, which = 4, ask = F, caption = "", sub.caption = "", 
+     col.in = "blue", col.ex = "darkgrey", lwd = 3)
+```
+```{r}
+str(df_daily_no_na)
+```
+
+```{r}
+keep <- c(#"TSprevious2","TSprevious7",
+          #"TSMAprevious4","TSMAprevious7","TSMAprevious16","TSMAprevious20","TSMAprevious21",
+          "prob_TSMAprevious4","prob_TSMAprevious7","prob_TSMAprevious16","prob_TSMAprevious20","prob_TSMAprevious21",
+          "tradestop")
+
+
+tradestop_baslm <- bas.lm(tradestop ~ .,
+                          data = df_daily_no_na[ , keep],
+                          prior = "BIC", 
+                          modelprior = uniform(),
+                          method = "MCMC", 
+                          MCMC.iterations = 10 ^ 6
+                          )
+```
+
+```{r}
+summary(tradestop_baslm)
+```
+
+```{r}
+plot(tradestop_baslm, which = 1, add.smooth = F, 
+     ask = F, pch = 16, sub.caption="", caption="")
+abline(a = 0, b = 0, col = "darkgrey", lwd = 2)
+```
+
+```{r}
+image(tradestop_baslm, rotate = F)
+```
+
+```{r}
+plot(tradestop_baslm, which = 4, ask = F, caption = "", sub.caption = "", 
+     col.in = "blue", col.ex = "darkgrey", lwd = 3)
+```
+
+```{r}
+# Obtain the coefficients from the model
+coef_bma_tradestop <- coefficients(tradestop_baslm)
+coef_bma_tradestop_ci <- confint(coef_bma_tradestop)
+
+# converted measurement of predicting variable back
+coef <- cbind(round(coef_bma_tradestop_ci, 6), 
+              `P(B != 0 | Y)` = round(coef_bma_tradestop$probne0, 3))
+coef
+```
+
+```{r}
+df_year <- df_daily
+shape1 <- nrow(df_year[which(df_year$tradestop == T),])
+shape2 <- nrow(df_year[which(df_year$tradestop == F),])
+sim <- data.frame(prob = rbeta(nrow(df_year),shape1,shape2))
+
+power <- 2.3
+ggplot(data = df_daily_no_na) +
+  geom_density(aes(x = prob_TSMAprevious4^(1/power) ), fill = "cornflowerblue", alpha=.2) +
+  geom_density(aes(x = prob_TSMAprevious7^(1/power) ), fill = "darkolivegreen3", alpha=.2) +
+  geom_density(aes(x = prob_TSMAprevious16^(1/power) ), fill = "darksalmon", alpha=.2) +
+  geom_density(aes(x = prob_TSMAprevious20^(1/power) ), fill = "darkorange", alpha=.2) +
+  geom_density(aes(x = prob_TSMAprevious21^(1/power) ), fill = "darkorange2", alpha=.2) +
+  geom_density(data = sim, aes(x=prob^(1/power)), color="darkred", fill="#FF6666", alpha=.3)
+  ggtitle("prob_TSMAprevious4")
+```
+
+```{r}
+power <- 2.3
+df_daily_no_na <- df_daily_no_na %>%
+  mutate(log_prob_TSMAprevious4 = (prob_TSMAprevious4)^(1/power),
+         log_prob_TSMAprevious7 = (prob_TSMAprevious7)^(1/power),
+         log_prob_TSMAprevious16 = (prob_TSMAprevious16)^(1/power),
+         log_prob_TSMAprevious20 = (prob_TSMAprevious20)^(1/power),
+         log_prob_TSMAprevious21 = (prob_TSMAprevious21)^(1/power)
+  )
+keep <- c(#"TSprevious2","TSprevious7",
+          #"TSMAprevious4","TSMAprevious7","TSMAprevious16","TSMAprevious20","TSMAprevious21",
+          "log_prob_TSMAprevious4","log_prob_TSMAprevious7","log_prob_TSMAprevious16","log_prob_TSMAprevious20","log_prob_TSMAprevious21",
+          "tradestop")
+
+
+tradestop_baslm <- bas.lm(tradestop ~ .,
+                          data = df_daily_no_na[ , keep],
+                          prior = "BIC", 
+                          modelprior = uniform(),
+                          method = "MCMC", 
+                          MCMC.iterations = 10 ^ 6
+                          )
+```
+
+
+```{r}
+plot(tradestop_baslm, which = 4, ask = F, caption = "", sub.caption = "", 
+     col.in = "blue", col.ex = "darkgrey", lwd = 3)
+```
+
+```{r}
+summary(tradestop_baslm)
+```
+
+```{r}
+plot(tradestop_baslm, which = 1, add.smooth = F, 
+     ask = F, pch = 16, sub.caption="", caption="")
+abline(a = 0, b = 0, col = "darkgrey", lwd = 2)
+```
+
+```{r}
+# Obtain the coefficients from the model
+coef_bma_tradestop <- coefficients(tradestop_baslm)
+coef_bma_tradestop_ci <- confint(coef_bma_tradestop)
+
+# converted measurement of predicting variable back
+coef <- cbind(round(coef_bma_tradestop_ci, 6), 
+              `P(B != 0 | Y)` = round(coef_bma_tradestop$probne0, 3))
+coef
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+Посмотрим как соотносятся средняя предсказанная вероятность по скользящим средним за 2-21 день назад с фактической пропорцией трейдстопов за сгруппированный временной интервал.
+```{r}
+df_daily %>%
+  filter(!is.nan(probTS)) %>%
+  group_by(gr=cut(probTS, breaks = seq(-0.1, 1, by = 0.1))) %>% 
+  summarise(n(), nTS = sum(tradestop), freq = nTS/n(),probTS_mean = mean(probTS)) %>%
+  print() %>%
+  ggplot() +
+  geom_point(aes(x = gr, y = freq))
+```
+
+В общем результат радует, исторические средние попадают достаточно близко в фактические данные. Не ожидал. 
+До 10% предсказанной вероятности трейдстопа идет явное занижение вероятности.
+
+# ДОРАБОТАТЬ скользящие
+Далее предстоит подумать как найти наиболее те самые скользящие, которые дадут лучший результат.
+В первую очередь стоит обратить внимание, на вероятноти менее 40%.
+
+Посмотрим на графике вероятность трейдстопа и фактические трейдстопы.
+
+```{r}
+years <- 2016
+months <- c(4,5,6)
+df_daily %>%
+  filter(year %in% years) %>%
+  filter(month %in% months) %>%
+  ggplot(aes()) +
+  geom_point(aes(x = date, y = probTS)) +
+  geom_point(data = df_daily[which(df_daily$year %in% years & 
+                                     df_daily$tradestop == T &
+                                     df_daily$month %in% months),],
+             aes(x = date, y = tradestop, color = "red"))
+```
+
+# Теперь считаем весь распределния доходности когда торгуем весь день.
+
+Создадим профит без трейдстопов.
+```{r}
+df_daily <- df_daily %>%
+  mutate(profitTS = ifelse(tradestop == 1, 0-probTS, profit-probTS))
+
+df_daily %>%
+  ggplot() +
+  geom_density(aes(x=profitTS), color="darkred", fill="#FF6666", alpha=.3)
+```
+
+Распределение ожидаемой средней доходности.
+
+```{r}
+data.frame(profit = rgamma(10000, sum(df_daily$profit)+nrow(df_daily),nrow(df_daily))-1) %>%
+  ggplot() +
+  geom_density(aes(x=profit), color="darkred", fill="#FF6666", alpha=.3)
+```
+
+Посчитаем среднюю доходность по всем скользящим за предыдущие 21 дней. 
+
+```{r}
+sliding_depth <- 50
+
+for (n in 1:sliding_depth) {
+  df_daily[,paste0("profit_previous",n)] <- c(rep(NA,n), head(df_daily$profitTS,-n))
+}
+
+for (n in 2:sliding_depth) {
+  df_daily[,paste0("profit_ma_previous",n)] <- apply(df_daily[,paste0("profit_previous",1:n)],1,mean,na.rm = F)
+}
+
+df_daily$profitMATS <- apply(df_daily[,paste0("profit_ma_previous",2:sliding_depth)],1,mean,na.rm = F)
+
+#drops <- c(paste0("profit_previous",1:sliding_depth),
+#          paste0("profit_ma_previous",2:sliding_depth))
+df_daily <- df_daily[ , !(names(df_daily) %in% drops)]
+
+summary(df_daily$profitMATS)
+```
+
+Соотнесем среднюю доходность по скользящим с фактической (скорректированной на трейдстоп) доходностью.
+
+```{r}
+df_daily %>%
+  filter(!is.nan(profitMATS)) %>%
+  filter(!is.nan(profitTS)) %>%
+  ggplot() +
+  geom_point(aes(x = profitMATS, y = profitTS)) +
+  facet_wrap("year")
+```
+
+Тренда нет. Посмотрел те же графики по скользящим за 50, 100, 200 и т.д. дней - тренда нет. Таким образом, можно сделать вывод, что очивидной зависимости между текущей и предыдущей доходностями нет.
+
+Скорректированная доходность - вероятность трейдстопа.
+
+```{r}
+df_daily %>%
+  filter(!is.nan(probTS)) %>%
+  filter(!is.nan(profitTS)) %>%
+  ggplot() +
+  geom_point(aes(x = profitTS, y = probTS)) +
+  facet_wrap("year")
+```
+
+Явного тренда нет.
+
+```{r}
+df_daily %>%
+  filter(!is.nan(probTS)) %>%
+  filter(!is.nan(profit)) %>%
+  ggplot() +
+  geom_point(aes(x = profit, y = probTS)) +
+  facet_wrap("year")
+```
+
+Построим модель зависимости дохода от вероятности стоптрейда.
+
+```{r}
+df_daily <- df_daily %>%
+  filter(!is.nan(probTS)) %>%
+  group_by(gr=cut(probTS, breaks = seq(-0.1, 1, by = 0.05))) %>%
+  mutate(gr = gr)
+```
+
+```{r}
+colnames(df_daily)
+```
+
+
+```{r, }
+# Import library
+library(BAS)
+
+# Use `bas.lm` to run regression model
+#cog.bas = bas.lm(profit ~ gr + probTS , 
+                 data = df_daily, 
+                 prior = "ZS-null", 
+                 modelprior = uniform(),
+                 method = "MCMC",
+                 MCMC.iterations = 10 ^ 6)
+```
+
+c(4,105,125,146,159,175,177,193,230,231)
+
+```{r}
+df_daily_pr = df_daily[,c("profit", paste0("profit_ma_previous",2:50))]
+
+library(BAS)
+# Use `bas.lm` to run regression model
+cog.bas = bas.lm(profit ~ ., 
+                 data = df_daily_pr, 
+                 prior = "ZS-null", 
+                 modelprior = uniform(),
+                 method = "MCMC",
+                 MCMC.iterations = 10 ^ 6)
+```
+
+```{r}
+round(summary(cog.bas), 3)
+```
+
+```{r}
+image(cog.bas, rotate = F)
+```
+
+```{r}
+cog_coef = coef(cog.bas)
+index <- which(cog_coef$probne0 > 0.5)
+cbind(cog_coef$namesx, round(cog_coef$postmean,3), round(cog_coef$probne0,3))
+```
+
+4,38,41,51,105,125,146,159,175,177,193
+
+```{r}
+crime.BMA = predict(crime.ZS, estimator = "BMA", se.fit = TRUE)
+```
+
+
+Таким образом при измении вероятности изменение доходности не происходит.
+
+```{r}
+df_daily %>%
+  filter(!is.nan(probTS)) %>%
+  group_by(gr=cut(probTS, breaks = seq(-0.1, 1, by = 0.05))) %>%
+  summarise(profit = mean(profit), n())
+```
+
+```{r}
+df_daily %>%
+  filter(probTS >= 0.1 & probTS <= 0.6) %>%
+  summarise(profit = mean(profit), n())
+```
+
+
+
+```{r}
+df_daily %>%
+  group_by(year,month) %>%
+  summarise(mean = mean(profitTS),
+            date = ymd(paste(year, month, "01", sep= ' '))) %>%
+  
+  ggplot(aes(x = date, y = mean)) +
+  geom_line(color="darkred") +
+  ggtitle("Mean profit calculated by calendar month")
+```
+
+
+
+```{r}
+for (y in unique(df_daily$year)) {
+  
+df_by_year <- df_daily %>%
+  filter(year == y)
+  
+n <- nrow(df_by_year)
+s2 <- sd(df_by_year$profit)
+ybar <- mean(df_by_year$profit)
+
+phi = rgamma(10000, (n-1)/2, s2*(n-1)/2)
+sigma = 1/sqrt(phi)
+post_mu = rnorm(10000, mean=ybar, sd=sigma/(sqrt(n)))
+pred_y =  rnorm(10000, post_mu, sigma)
+
+df = data.frame(post_mu = sort(post_mu), 
+                pred_y = sort(pred_y))
+
+require(gridExtra)
+
+plot_pred_profit <- ggplot(data = df) + 
+  geom_density(data = df_by_year, aes(x=profit),  color="blue", fill="blue", alpha=.3) +
+  geom_density(aes(x=pred_y), color="green4", fill="lightgreen", alpha=.5)
+  
+
+plot_pred_expmeanprofit <- ggplot(data = df) + 
+  geom_density(aes(x=post_mu), color="darkred", fill="#FF6666", alpha=.45)
+
+grid.arrange(plot_pred_profit, plot_pred_expmeanprofit, ncol=2)
+}
+```
+
+
+
+```{r}
+#remotes::install_github("tylermorganwall/rayshader")
+library(rayshader)
+
+movies_score_gg2 <- ggplot(df_movies_score) + 
+  geom_point(aes(x= resid ,y= pred, colour = audience_score)) +
+  scale_color_gradient2(low="blue", mid="white",high="red")+
+  ggtitle("Destribution residials size") +
+  theme(title = element_text(size=8),
+        text = element_text(size=12))
+
+movies_score_gg3 <- ggplot(df_movies_score) + 
+  geom_point(aes(x=  audience_score,y= resid, colour = pred)) +
+  scale_color_gradient2(low="blue", mid="white",high="red")+
+  ggtitle("Destribution residials size") +
+  theme(title = element_text(size=8),
+        text = element_text(size=12))
+
+movies_score_gg <- ggplot(df_movies_score) + 
+  geom_point(aes(x=critics_score,y=pred, colour = resid)) +
+  scale_color_gradient2(low="blue", mid="white",high="red")+
+  ggtitle("Destribution residials size") +
+  theme(title = element_text(size=8),
+        text = element_text(size=12)) 
+
+#plot_gg(movies_score_gg3, multicore=TRUE,height=5,width=6,scale=500)
+```
+
+
+
+
+
+
+
