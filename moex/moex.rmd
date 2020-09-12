@@ -7,12 +7,14 @@ output:
   pdf_document: default
   word_document: default
 ---
-
+# Setup
+## Options
 ```{r setup, include=FALSE}
 options(digits = 4)
 options(scipen=999)
 ```
 
+## Library
 ```{r, message=FALSE}
 library(statsr)
 library(dplyr)
@@ -23,18 +25,22 @@ library(BAS)
 library(GGally)
 ```
 
-# Data set
-```{r}
-df_daily <- read.csv("./data/dailystrategydata.csv", encoding = "UTF-8")
-#df_daily <- read.csv("./data/betweendailystrategydata.csv", encoding = "UTF-8")
+# Data
 
-df_daily <- df_daily[,c(2,8,15,32)]
-names(df_daily) <- c("position","date","timeclose","profit")
-str(df_daily)
+## Strategy
+```{r}
+source("./scripts/get_strategies.r")
+df_strategy <- get_strategies()
+
+df_RTS_18_22 <- read.csv("./data/dailystrategydata.csv", encoding = "UTF-8")
+
+df_RTS_18_22 <- df_RTS_18_22[,c(2,8,15,32)]
+names(df_RTS_18_22) <- c("position","date","timeclose","profit")
+str(df_strategy)
 ```
 
 ```{r}
-df_daily <- df_daily %>%
+df_RTS_18_22 <- df_RTS_18_22 %>%
   mutate(date = as.Date(date, format = '%d.%m.%Y')) %>%
   mutate(date = as.POSIXct(date, format = '%d.%m.%Y')) %>%
   mutate(profit = gsub("%", "", profit)) %>%
@@ -45,14 +51,187 @@ df_daily <- df_daily %>%
   mutate(wday = as.factor(wday(date, week_start = 1))) %>%
   mutate(timeclose = hms(df_daily$timeclose)) %>%
   mutate(tradestop = case_when(timeclose$hour == 22 ~ F, T ~ T)) # for indays trade
-  #mutate(tradestop = case_when(profit < -1 ~ T, T ~ F)) # for betweendays trade
 
-df_daily <- na.omit(df_daily)
+df_RTS_18_22 <- na.omit(df_RTS_18_22)
 ```
+
 
 ```{r}
-summary(df_daily)
+# RTS
+## traning
+df_2008_2013_RTS_10_14 <- read.csv("./data/2008-2013_RTS_10-14.csv", encoding = "UTF-8", sep = ";")
+df_2014_2018_RTS_10_14 <- read.csv("./data/2014-2018_RTS_10-14.csv", encoding = "UTF-8", sep = ";")
+df_2019_2020_RTS_10_14 <- read.csv("./data/2019-2020_RTS_10-14.csv", encoding = "UTF-8", sep = ";")
+
+df_2008_2013_RTS_14_18 <- read.csv("./data/2008-2013_RTS_14-18.csv", encoding = "UTF-8", sep = ";")
+df_2014_2018_RTS_14_18 <- read.csv("./data/2014-2018_RTS_14-18.csv", encoding = "UTF-8", sep = ";")
+df_2019_2020_RTS_14_18 <- read.csv("./data/2019-2020_RTS_14-18.csv", encoding = "UTF-8", sep = ";")
+
+# SI
+df_2008_2013_SI_10_14 <- read.csv("./data/2008-2013_Si_10-14.csv", encoding = "UTF-8", sep = ";")
+df_2014_2018_SI_10_14 <- read.csv("./data/2014-2018_Si_10-14.csv", encoding = "UTF-8", sep = ";")
+df_2019_2020_SI_10_14 <- read.csv("./data/2019-2020_Si_10-14.csv", encoding = "UTF-8", sep = ";")
+
+df_2008_2013_SI_14_18 <- read.csv("./data/2008-2013_Si_14-18.csv", encoding = "UTF-8", sep = ";")
+df_2014_2018_SI_14_18 <- read.csv("./data/2014-2018_Si_14-18.csv", encoding = "UTF-8", sep = ";")
+df_2019_2020_SI_14_18 <- read.csv("./data/2019-2020_Si_14-18.csv", encoding = "UTF-8", sep = ";")
+
+df_2008_2013_SI_18_22 <- read.csv("./data/2008-2013_Si_18-22.csv", encoding = "UTF-8", sep = ";")
+df_2014_2018_SI_18_22 <- read.csv("./data/2014-2018_Si_18-22.csv", encoding = "UTF-8", sep = ";")
+df_2019_2020_SI_18_22 <- read.csv("./data/2019-2020_Si_18-22.csv", encoding = "UTF-8", sep = ";")
+
+df_2008_2013_RTS_10_14 <- df_2008_2013_RTS_10_14[,c(2,9,11,17,18,29)]
+df_2014_2018_RTS_10_14 <- df_2014_2018_RTS_10_14[,c(2,9,11,17,18,29)]
+df_2008_2013_RTS_14_18 <- df_2008_2013_RTS_14_18[,c(2,9,11,17,18,29)]
+df_2014_2018_RTS_14_18 <- df_2014_2018_RTS_14_18[,c(2,9,11,17,18,29)]
+
+df_2019_2020_RTS_10_14 <- df_2019_2020_RTS_10_14[,c(2,9,11,17,18,29)]
+df_2019_2020_RTS_14_18 <- df_2019_2020_RTS_14_18[,c(2,9,11,17,18,29)]
+
+
+df_2008_2013_SI_10_14 <- df_2008_2013_SI_10_14[,c(2,9,11,17,18,29)]
+df_2014_2018_SI_10_14 <- df_2014_2018_SI_10_14[,c(2,9,11,17,18,29)]
+df_2008_2013_SI_14_18 <- df_2008_2013_SI_14_18[,c(2,9,11,17,18,29)]
+df_2014_2018_SI_14_18 <- df_2014_2018_SI_14_18[,c(2,9,11,17,18,29)]
+df_2008_2013_SI_18_22 <- df_2008_2013_SI_18_22[,c(2,9,11,17,18,29)]
+df_2014_2018_SI_18_22 <- df_2014_2018_SI_18_22[,c(2,9,11,17,18,29)]
+
+df_2019_2020_SI_10_14 <- df_2019_2020_SI_10_14[,c(2,9,11,17,18,29)]
+df_2019_2020_SI_14_18 <- df_2019_2020_SI_14_18[,c(2,9,11,17,18,29)]
+df_2019_2020_SI_18_22 <- df_2019_2020_SI_18_22[,c(2,9,11,17,18,29)]
+
+
+names(df_2008_2013_RTS_10_14) <- c("position","date","entryprice","timeclose","exitprice","profit")
+names(df_2014_2018_RTS_10_14) <- c("position","date","entryprice","timeclose","exitprice","profit")
+names(df_2008_2013_RTS_14_18) <- c("position","date","entryprice","timeclose","exitprice","profit")
+names(df_2014_2018_RTS_14_18) <- c("position","date","entryprice","timeclose","exitprice","profit")
+
+names(df_2019_2020_RTS_10_14) <- c("position","date","entryprice","timeclose","exitprice","profit")
+names(df_2019_2020_RTS_14_18) <- c("position","date","entryprice","timeclose","exitprice","profit")
+
+names(df_2008_2013_SI_10_14) <- c("position","date","entryprice","timeclose","exitprice","profit")
+names(df_2014_2018_SI_10_14) <- c("position","date","entryprice","timeclose","exitprice","profit")
+names(df_2008_2013_SI_14_18) <- c("position","date","entryprice","timeclose","exitprice","profit")
+names(df_2014_2018_SI_14_18) <- c("position","date","entryprice","timeclose","exitprice","profit")
+names(df_2008_2013_SI_18_22) <- c("position","date","entryprice","timeclose","exitprice","profit")
+names(df_2014_2018_SI_18_22) <- c("position","date","entryprice","timeclose","exitprice","profit")
+
+names(df_2019_2020_SI_10_14) <- c("position","date","entryprice","timeclose","exitprice","profit")
+names(df_2019_2020_SI_14_18) <- c("position","date","entryprice","timeclose","exitprice","profit")
+names(df_2019_2020_SI_18_22) <- c("position","date","entryprice","timeclose","exitprice","profit")
+
+
+df_RTS_10_14 <- rbind(df_2008_2013_RTS_10_14, df_2014_2018_RTS_10_14, df_2019_2020_RTS_10_14)
+df_RTS_14_18 <- rbind(df_2008_2013_RTS_14_18, df_2014_2018_RTS_14_18, df_2019_2020_RTS_14_18)
+
+df_SI_10_14 <- rbind(df_2008_2013_SI_10_14, df_2014_2018_SI_10_14, df_2019_2020_SI_10_14)
+df_SI_14_18 <- rbind(df_2008_2013_SI_14_18, df_2014_2018_SI_14_18, df_2019_2020_SI_14_18)
+df_SI_18_22 <- rbind(df_2008_2013_SI_18_22, df_2014_2018_SI_18_22, df_2019_2020_SI_18_22)
+
+rm(df_2008_2013_RTS_10_14);rm(df_2014_2018_RTS_10_14);rm(df_2019_2020_RTS_10_14)
+rm(df_2008_2013_RTS_14_18);rm(df_2014_2018_RTS_14_18);rm(df_2019_2020_RTS_14_18)
+rm(df_2008_2013_SI_10_14);rm(df_2014_2018_SI_10_14);rm(df_2019_2020_SI_10_14)
+rm(df_2008_2013_SI_14_18);rm(df_2014_2018_SI_14_18);rm(df_2019_2020_SI_14_18)
+rm(df_2008_2013_SI_18_22);rm(df_2014_2018_SI_18_22);rm(df_2019_2020_SI_18_22)
+
+df_RTS_10_14 <- df_RTS_10_14 %>%
+  mutate(date = as.Date(date, format = '%d.%m.%Y')) %>%
+  mutate(date = as.POSIXct(date, format = '%d.%m.%Y')) %>%
+  mutate(profit = gsub("%", "", profit)) %>%
+  mutate(profit = gsub(",", ".", profit)) %>%
+  mutate(profit = as.numeric(profit)) %>%
+  mutate(year = as.factor(year(date))) %>%
+  mutate(month = as.factor(month(date))) %>%
+  mutate(wday = as.factor(wday(date, week_start = 1))) %>%
+  mutate(timeclose = hms(timeclose)) %>%
+  mutate(tradestop = case_when(timeclose$hour == 13 & timeclose$minute > 57  ~ F, T ~ T))
+df_RTS_10_14 <- na.omit(df_RTS_10_14)
+
+df_RTS_14_18 <- df_RTS_14_18 %>%
+  mutate(date = as.Date(date, format = '%d.%m.%Y')) %>%
+  mutate(date = as.POSIXct(date, format = '%d.%m.%Y')) %>%
+  mutate(profit = gsub("%", "", profit)) %>%
+  mutate(profit = gsub(",", ".", profit)) %>%
+  mutate(profit = as.numeric(profit)) %>%
+  mutate(year = as.factor(year(date))) %>%
+  mutate(month = as.factor(month(date))) %>%
+  mutate(wday = as.factor(wday(date, week_start = 1))) %>%
+  mutate(timeclose = hms(timeclose)) %>%
+  mutate(tradestop = case_when((timeclose$hour == 17 & timeclose$minute > 57) | (timeclose$hour < 14)  ~ F, T ~ T))
+df_RTS_14_18 <- na.omit(df_RTS_14_18)
+
+df_SI_10_14 <- df_SI_10_14 %>%
+  mutate(date = as.Date(date, format = '%d.%m.%Y')) %>%
+  mutate(date = as.POSIXct(date, format = '%d.%m.%Y')) %>%
+  mutate(profit = gsub("%", "", profit)) %>%
+  mutate(profit = gsub(",", ".", profit)) %>%
+  mutate(profit = as.numeric(profit)) %>%
+  mutate(year = as.factor(year(date))) %>%
+  mutate(month = as.factor(month(date))) %>%
+  mutate(wday = as.factor(wday(date, week_start = 1))) %>%
+  mutate(timeclose = hms(timeclose)) %>%
+  mutate(tradestop = case_when(timeclose$hour == 13 & timeclose$minute > 57  ~ F, T ~ T))
+df_SI_10_14 <- na.omit(df_SI_10_14)
+
+df_SI_14_18 <- df_SI_14_18 %>%
+  mutate(date = as.Date(date, format = '%d.%m.%Y')) %>%
+  mutate(date = as.POSIXct(date, format = '%d.%m.%Y')) %>%
+  mutate(profit = gsub("%", "", profit)) %>%
+  mutate(profit = gsub(",", ".", profit)) %>%
+  mutate(profit = as.numeric(profit)) %>%
+  mutate(year = as.factor(year(date))) %>%
+  mutate(month = as.factor(month(date))) %>%
+  mutate(wday = as.factor(wday(date, week_start = 1))) %>%
+  mutate(timeclose = hms(timeclose)) %>%
+  mutate(tradestop = case_when((timeclose$hour == 17 & timeclose$minute > 57) | (timeclose$hour < 14) ~ F, T ~ T))
+df_SI_14_18 <- na.omit(df_SI_14_18)
+
+df_SI_18_22 <- df_SI_18_22 %>%
+  mutate(date = as.Date(date, format = '%d.%m.%Y')) %>%
+  mutate(date = as.POSIXct(date, format = '%d.%m.%Y')) %>%
+  mutate(profit = gsub("%", "", profit)) %>%
+  mutate(profit = gsub(",", ".", profit)) %>%
+  mutate(profit = as.numeric(profit)) %>%
+  mutate(year = as.factor(year(date))) %>%
+  mutate(month = as.factor(month(date))) %>%
+  mutate(wday = as.factor(wday(date, week_start = 1))) %>%
+  mutate(timeclose = hms(timeclose)) %>%
+  mutate(tradestop = case_when((timeclose$hour == 21 & timeclose$minute > 57) | (timeclose$hour < 18)  ~ F, T ~ T))
+df_SI_18_22 <- na.omit(df_SI_18_22)
 ```
+## Worked set
+```{r}
+df_daily <- df_RTS_14_18
+```
+
+## MOEX
+### turnover
+```{r}
+# read from moex
+# source("./scripts/get_turnover_moex.r")
+# df_moex <- get_data_from_moex(startDate = "2012-01-01",endDate = "2020-03-31")
+# write.csv(x=df_moex, file="./data/moex.csv")
+
+# read from csv
+df_moex <- read.csv("./data/moex.csv")
+```
+### indexes
+```{r}
+# read from moex
+#source("./scripts/get_index_moex.r")
+#l_index_moex <- get_index_moex(startDate = "2008-01-01", endDate = "2020-03-31")
+#df_index_moex <- l_index_moex[[1]]
+#df_index_moex_readme <- l_index_moex[[2]]
+#write.csv(x=df_index_moex, file="./data/index_moex_20080101_20200331.csv")
+#write.csv(x=df_index_moex_readme, file="./data/index_moex_readme_20080101_20200331.csv")
+
+# read from csv
+df_index_moex        <- read.csv("./data/index_moex_20080101_20200331.csv")
+df_index_moex_readme <- read.csv("./data/index_moex_readme_20080101_20200331.csv")
+```
+
+
+
 
 
 # PROFIT
@@ -915,6 +1094,7 @@ vProfitGrDTR <- vProfitGrDTR[1,"profitGrDTR"][[1]]
 
 g_SDPRF_dailyTS <- g_SDPRF_dailyTS %>%
   mutate(profitGrDTR = case_when(profitGrDTR == 0 ~ vProfitGrDTR, T ~ profitGrDTR))
+
 ```
 
 
@@ -976,9 +1156,9 @@ for (index in 1:nrow(df_dailyTS)) {
 ## Checking result
 ```{r, warning=F, message=F}
 df_dailyTS <- df_dailyTS %>%
-  mutate(profitGR = vProfitTS+(pr_wday + pr_month + pr_SDPRF+pr_RealProbTS)/4)
+  mutate(prob0 = (prob0_wday + prob0_month + prob0_SDPRF+prob0_RealProbTS)/4)
 
-prob0Level <- 0.15
+prob0Level <- 0.20
 df_profitM <- df_dailyTS %>%
   filter(prob0 < prob0Level) %>%
   group_by(year) %>%
