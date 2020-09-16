@@ -8,14 +8,10 @@ output:
   word_document: default
 ---
 # Setup
-## Options
 ```{r setup, include=FALSE}
 options(digits = 4)
 options(scipen=999)
-```
 
-## Library
-```{r, message=FALSE}
 library(statsr)
 library(dplyr)
 library(ggplot2)
@@ -29,155 +25,163 @@ library(GGally)
 
 ## Strategy
 ```{r}
-source("./scripts/get_strategies.r")
-df_strategy <- get_strategies()
+# source("./scripts/get_strategies.r")
+# df_strategy <- get_strategies()
+# write.csv(x=df_strategy, file="./data/strategy/strategy.csv", row.names = F)
+```
 
+```{r}
+df_strategy <- read.csv("./data/strategy/strategy.csv")
 str(df_strategy)
 ```
 
 
-## Worked set
+## Work set
 ```{r}
-df_daily <- df_RTS_14_18
+vYears <- c("2008", "2009", "2010", "2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018")
+
+df_daily <- df_strategy %>%
+  filter(year %in% vYears[1:12])
 ```
 
 ## MOEX
-### turnover
+
+### read from moex
 ```{r}
-# read from moex
 # source("./scripts/get_turnover_moex.r")
 # df_moex <- get_data_from_moex(startDate = "2012-01-01",endDate = "2020-03-31")
 # write.csv(x=df_moex, file="./data/moex.csv")
 
-# read from csv
-df_moex <- read.csv("./data/moex.csv")
-```
-### indexes
-```{r}
-# read from moex
 # source("./scripts/get_index_moex.r")
 # l_index_moex <- get_index_moex(startDate = "2008-01-01", endDate = "2020-03-31")
 # df_index_moex <- l_index_moex[[1]]
 # df_index_moex_readme <- l_index_moex[[2]]
 # write.csv(x=df_index_moex, file="./data/index_moex_20080101_20200331.csv")
 # write.csv(x=df_index_moex_readme, file="./data/index_moex_readme_20080101_20200331.csv")
+```
 
-# read from csv
+```{r}
+df_turnover_moex     <- read.csv("./data/moex.csv")
 df_index_moex        <- read.csv("./data/index_moex_20080101_20200331.csv")
 df_index_moex_readme <- read.csv("./data/index_moex_readme_20080101_20200331.csv")
 ```
 
-
-
-
-
-# PROFIT
+# EDA
+## PROFIT
 
 ## All period
 
 ```{r}
 ggplot(data = df_daily, aes(x = profit, fill= yday(date))) +
   geom_density(aes(x=profit), color="green4", fill="lightgreen", alpha=.3) +
-  ggtitle("Profit distribution by all data")
+  ggtitle("Profit distribution by all data") +
+  facet_wrap("strategy")
 ```
 
 ## Years
 
 ```{r}
 df_daily %>%
-        group_by(year) %>%
+        group_by(strategy, year) %>%
         summarise(x_bar = mean(profit), x_sd = sd(profit), x_median = median(profit), n = n())
 ```
 
 ```{r}
 df_daily %>%
-  group_by(year) %>%
+  group_by(strategy, year) %>%
   summarise(x_bar = mean(profit), x_sd = sd(profit), x_median = median(profit), n = n())
 
 df_daily %>%
-  group_by(year) %>%
+  group_by(strategy, year) %>%
   summarise(x_bar = mean(profit), x_sd = sd(profit), year = year[1]) %>%
   ggplot() +
-  geom_col(aes(y = x_bar, x = year, fill = year), position = 'dodge')
+  geom_col(aes(y = x_bar, x = year, fill = year), position = 'dodge') +
+  facet_wrap("strategy")
 ```
 
 sd - profit
 
 ```{r}
 df_daily %>%
-  group_by(year) %>%
-  summarise(x_bar = mean(profit), x_sd = sd(profit)) %>%
-  ggplot(aes(y = x_bar, x = x_sd)) +
+  group_by(strategy, year) %>%
+  summarise(profit_mean = mean(profit), profit_sd = sd(profit),strategy = strategy[1]) %>%
+  ggplot(aes(y = profit_mean, x = profit_sd)) +
   geom_point() +
   geom_smooth(method = "lm") +
-  ggtitle("Relationship sd & mean profit")
+  ggtitle("Relationship sd & mean profit") +
+  facet_wrap("strategy")
 ```
 
 ## Months
 
 ```{r}
 df_daily %>%
-        group_by(month) %>%
+        group_by(strategy,month) %>%
         summarise(x_bar = mean(profit), x_sd = sd(profit), x_median = median(profit), n = n())
 
 df_daily %>%
-  group_by(month) %>%
+  group_by(strategy,month) %>%
   summarise(x_bar = mean(profit), month = month[1]) %>%
   ggplot(aes(y = x_bar, x = month, fill = month)) +
-  geom_col(position = 'dodge')
+  geom_col(position = 'dodge') +
+  facet_wrap("strategy")
 ```
 
 sd - profit
 
 ```{r}
 df_daily %>%
-  group_by(month) %>%
-  summarise(x_bar = mean(profit), x_sd = sd(profit)) %>%
-  ggplot(aes(y = x_bar, x = x_sd)) +
+  group_by(strategy, month) %>%
+  summarise(profit_mean = mean(profit), profit_sd = sd(profit),strategy = strategy[1]) %>%
+  ggplot(aes(y = profit_mean, x = profit_sd)) +
   geom_point() +
   geom_smooth(method = "lm") +
-  ggtitle("Relationship sd & mean profit")
+  ggtitle("Relationship sd & mean profit") +
+  facet_wrap("strategy")
 ```
 
 ## Days
 
 ```{r}
 df_daily %>%
-        group_by(wday) %>%
+        group_by(strategy,wday) %>%
         summarise(x_bar = mean(profit), x_sd = sd(profit), x_median = median(profit), n = n())
 
 df_daily %>%
-  group_by(wday) %>%
+  group_by(strategy,wday) %>%
   summarise(x_bar = mean(profit), wday = wday[1]) %>%
   filter(wday %in% c(1,2,3,4,5)) %>%
   ggplot(aes(y = x_bar, x = wday, fill = wday)) +
-  geom_col(position = 'dodge')
+  geom_col(position = 'dodge') +
+  facet_wrap("strategy")
 ```
 
 sd - profit
 
 ```{r}
 df_daily %>%
-  group_by(wday) %>%
+  group_by(strategy, wday) %>%
   summarise(x_bar = mean(profit), x_sd = sd(profit)) %>%
   ggplot(aes(y = x_bar, x = x_sd)) +
   geom_point() +
   geom_smooth(method = "lm") +
-  ggtitle("Relationship sd & mean profit")
+  ggtitle("Relationship sd & mean profit") +
+  facet_wrap("strategy")
 ```
 
 ## Position
 
 ```{r}
 df_daily %>%
-        group_by(position) %>%
+        group_by(strategy, position) %>%
         summarise(x_bar = mean(profit), x_sd = sd(profit), x_median = median(profit), n = n())
 
 df_daily %>%
-  group_by(position) %>%
+  group_by(strategy, position) %>%
   summarise(x_bar = mean(profit), position = position[1]) %>%
   ggplot(aes(y = x_bar, x = position, fill = position)) +
-  geom_col(position = 'dodge')
+  geom_col(position = 'dodge') +
+  facet_wrap("strategy")
 ```
 
 
@@ -185,100 +189,60 @@ df_daily %>%
 
 ```{r}
 df_daily %>%
-        group_by(tradestop) %>%
-        summarise(x_bar = mean(profit), x_sd = sd(profit), x_median = median(profit), n = n())
+        group_by(strategy, tradestop) %>%
+        summarise(mean_profit = mean(profit), sd_profit = sd(profit), median_profit = median(profit), n = n())
 
 df_daily %>%
-  group_by(tradestop) %>%
+  group_by(strategy, tradestop) %>%
   summarise(x_bar = mean(profit), tradestop = tradestop[1]) %>%
   ggplot(aes(y = x_bar, x = tradestop, fill = tradestop)) +
-  geom_col(position = 'dodge')
+  geom_col(position = 'dodge') +
+  facet_wrap("strategy")
 ```
 
-# TRADE STOP
+## TRADE STOP
 
-## Trend
+### Trend
 ```{r}
 df_daily %>%
-  group_by(year,month) %>%
+  group_by(strategy, year,month) %>%
   mutate(n = n()) %>%
   filter(tradestop == TRUE) %>%
-  summarise(n_stop = n(), n = n[1], freq = n_stop/n, date = ymd(paste(year, month, "01", sep= ' '))) %>%
+  summarise(n_stop = n(), n = n[1], freq = n_stop/n,date = ymd(paste(year, month, "01", sep= ' '))) %>%
   
-  ggplot(aes(x = date, y = freq)) +
-  geom_line(color="darkred") +
-  ggtitle("Trade stop probability calculated by calendar month")
+  ggplot() +
+  geom_line(aes(x = date, y = freq), color="darkred") +
+  ggtitle("Trade stop probability calculated by calendar month") +
+  facet_wrap("strategy")
 ```
 
-## Ditribution
-### All period
+# MA
 
-```{r}
-df_year <- df_daily
-
-shape1 <- nrow(df_year[which(df_year$tradestop == T),])
-shape2 <- nrow(df_year[which(df_year$tradestop == F),])
-sim <- data.frame(prob = rbeta(2626,shape1,shape2))
-summary(sim)
-
-ggplot(data = sim) +
-  geom_density(aes(x=prob), color="darkred", fill="#FF6666", alpha=.3) +
-  ggtitle("TS Ditribution - All period")
-```
-
-### Crisis years 
-
-For 2008-2009 and 2014-2015
-
-```{r}
-df_year <- df_daily %>%
-  filter(year %in% c(2008,2009,2014,2015))
-
-shape1 <- nrow(df_year[which(df_year$tradestop == T),])
-shape2 <- nrow(df_year[which(df_year$tradestop == F),])
-sim <- data.frame(prob = rbeta(100000,shape1,shape2))
-summary(sim)
-
-ggplot(data = sim) +
-  geom_density(aes(x=prob), color="darkred", fill="#FF6666", alpha=.3)  +
-  ggtitle("TS Ditribution - Crisis years")
-```
-
-### Calm years
-
-For 2010-2013, 2016-2018.
-
-```{r}
-df_year <- df_daily %>%
-  filter(year %in% c(2010,2011,2012,2013,2016,2017,2018))
-
-shape1 <- nrow(df_year[which(df_year$tradestop == T),])
-shape2 <- nrow(df_year[which(df_year$tradestop == F),])
-sim <- data.frame(prob = rbeta(100000,shape1,shape2))
-summary(sim)
-
-ggplot(data = sim) +
-  geom_density(aes(x=prob), color="darkred", fill="#FF6666", alpha=.3)  +
-  ggtitle("TS Ditribution - Calm years")
-
-rm(sim); rm(df_year)
-```
-
-# TS
-## ProbTS by MA
 
 Создадим таблицу с данными по количеству стоптрейдов за предыдущие N дней.
 
 ```{r}
+vYears <- c("2008", "2009", "2010", "2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018")
+df_daily <- df_strategy %>%
+  filter(year %in% vYears[1:12])
+df_daily$index <- row.names(df_daily)
+```
+
+```{r}
 sliding_depth <- 30
-df_daily$tradestop <- as.integer(df_daily$tradestop)
+vColNames <- c("tradestop","profit","bartime","barprofit","MAE","MFE")
 
-for (n in 1:sliding_depth) {
-  df_daily[,paste0("TSprevious",n)] <- c(rep(NA,n), head(df_daily$tradestop,-n))
-}
+source("./scripts/makePrColForStrategy.r")
+df_daily <- makePrColForStrategy(df_strategy = df_daily,
+                                 vColNames = "tradestop",
+                                 sliding_depth = sliding_depth)
+```
 
+## ProbTS
+
+```{r}
 for (n in 2:sliding_depth) {
-  df_daily[,paste0("TSMAprevious",n)] <- apply(df_daily[,paste0("TSprevious",1:n)],1,sum,na.rm = F)
+  df_daily[,paste0("tradestop_MA",n)] <- apply(df_daily[,paste0("tradestop_Pr",1:n)],1,sum,na.rm = F)
 }
 ```
 
@@ -286,10 +250,10 @@ for (n in 2:sliding_depth) {
 т.е. например заглядываем на 10 дней вперед смотрим количество трейдстопов и на этих данных моделируем распределение, затем по этому рапределению считаем среднее значение и его и записываем
 
 ```{r}
-get_prob <- function(df,col_names) {
+get_MeanBetaDist <- function(df,col_names) {
   mean_rbeta <- function(x, col_name) {
   # calculating sliding depth
-  n <- as.integer(sub("BPMAprevious|TSMAprevious","",col_name))
+  n <- as.integer(sub("tradestop_MA|tradestop_MA","",col_name))
   # return mean of rbeta distribution
   shape1 = as.integer(x[col_name])
   shape2 = n-as.integer(x[col_name])
@@ -304,95 +268,81 @@ get_prob <- function(df,col_names) {
 }
 ```
 
-```{r}
-mean(rbeta(1000, shape1 = as.integer(5), shape2 = 10-5))
-```
-
-
 Посчитаем средние вероятности трейдстопа по скользящим средним. Применим созданную функцию.
 ```{r, message=F,warning=F}
-df_daily <- get_prob(df = df_daily, col_names = paste0("TSMAprevious",2:sliding_depth))
-```
+df_daily <- get_MeanBetaDist(df = df_daily, col_names = paste0("tradestop_MA",2:sliding_depth))
+df_daily$probTS <- apply(df_daily[,paste0("prob_tradestop_MA",2:sliding_depth)],1,mean,na.rm = F)
 
-Посчитаем среднюю вероятность трейдстопа по всем скользящим.
-```{r}
-df_daily$probTS <- apply(df_daily[,paste0("prob_TSMAprevious",2:sliding_depth)],1,mean,na.rm = F)
-```
-
-Delete unused columns
-```{r}
-drops <- c(paste0("TSprevious",1:sliding_depth),
-           paste0("TSMAprevious",2:sliding_depth),
-           paste0("prob_TSMAprevious",2:sliding_depth))
+drops <- c(paste0("tradestop_Pr",1:sliding_depth),
+           paste0("tradestop_MA",2:sliding_depth),
+           paste0("prob_tradestop_MA",2:sliding_depth))
 
 df_daily <- df_daily[ , !(names(df_daily) %in% drops)]
-names(df_daily)
 ```
 
 ```{r}
 index_ts <- which(df_daily$tradestop == T)
 ggplot() +
   geom_density(data = df_daily[-index_ts,], aes(x=probTS), color = "darkgreen", fill="green", alpha=.3) +
-  geom_density(data = df_daily[index_ts,], aes(x=probTS), color = "darkred", fill="red", alpha=.3)
+  geom_density(data = df_daily[index_ts,], aes(x=probTS), color = "darkred", fill="red", alpha=.3) +
+  facet_wrap("strategy")
 ```
 
-```{r}
-df_daily %>%
-  filter(!is.na(probTS)) %>%
-  ggplot() +
-  geom_boxplot(aes(y = probTS, x = as.factor(tradestop), color = as.factor(tradestop)))
-```
-
-## Table probTS - realTS
+### Table probTS - realTS
 
 Calculating real cumulative trade stop probability for `probTS` scale. 
 
 ```{r}
 df_tsprob <- data.frame(mean_probTS = numeric(),
                         mean_profit = numeric(),
-                        mean_realTS = numeric())
+                        mean_realTS = numeric(),
+                        strategy = character())
 
+# botstraping for each prob level
 
-for (prob in 1:100) {
-  
-prob_index <- which(df_daily$probTS >= prob/100)
+vStratedies <- unique(df_daily$strategy)
 
-  if (length(prob_index >= 10)) {
-    df_daily_nona <- na.omit(df_daily[prob_index,])
-    nRow <- nrow(df_daily_nona)
+for (strategy in vStratedies) {
+  for (prob in 1:100) {
+    prob_index <- which(df_daily$probTS >= prob / 100 & df_daily$strategy == strategy)
     
-    for (n in 1:50) {
-      index <- sample(1:nRow,nRow,replace = T)
-      df_tsprob <- rbind(df_tsprob,
-                         data.frame(mean_probTS = mean(df_daily_nona[index,"probTS"]),
-                                    mean_profit = mean(df_daily_nona[index,"profit"]),
-                                    mean_realTS = mean(df_daily_nona[index,"tradestop"])))
-    }
+    if (length(prob_index >= 10)) {
+      df_daily_nona <- na.omit(df_daily[prob_index, ])
+      nRow <- nrow(df_daily_nona)
+      
+      for (n in 1:50) {
+        index <- sample(1:nRow, nRow, replace = T)
+        df_tsprob <- rbind(df_tsprob, data.frame(
+          mean_probTS = mean(df_daily_nona[index, "probTS"][[1]]),
+          mean_profit = mean(df_daily_nona[index, "profit"][[1]]),
+          mean_realTS = mean(df_daily_nona[index, "tradestop"][[1]]),
+          strategy = strategy))
+        }
+      }
   }
-}
 
-
-for (prob in 1:100) {
-  
-prob_index <- which(df_daily$probTS <= prob/100)
-
-  if (length(prob_index >= 10)) {
-    df_daily_nona <- na.omit(df_daily[prob_index,])
-    nRow <- nrow(df_daily_nona)
+  for (prob in 1:100) {
+    prob_index <- which(df_daily$probTS <= prob / 100 & df_daily$strategy == strategy)
     
-    for (n in 1:50) {
-      index <- sample(1:nRow,nRow,replace = T)
-      df_tsprob <- rbind(df_tsprob,
-                         data.frame(mean_probTS = mean(df_daily_nona[index,"probTS"]),
-                                    mean_profit = mean(df_daily_nona[index,"profit"]),
-                                    mean_realTS = mean(df_daily_nona[index,"tradestop"])))
-    }
+    if (length(prob_index >= 10)) {
+      df_daily_nona <- na.omit(df_daily[prob_index, ])
+      nRow <- nrow(df_daily_nona)
+      
+      for (n in 1:50) {
+        index <- sample(1:nRow, nRow, replace = T)
+        df_tsprob <- rbind(df_tsprob, data.frame(
+          mean_probTS = mean(df_daily_nona[index, "probTS"][[1]]),
+          mean_profit = mean(df_daily_nona[index, "profit"][[1]]),
+          mean_realTS = mean(df_daily_nona[index, "tradestop"][[1]]),
+          strategy = strategy))
+        }
+      }
   }
 }
 
 # transform data to predicted and ci values
 df_tsprob <- df_tsprob %>% 
-  group_by(gr=cut(mean_probTS, breaks = seq(from = 0, to = max(df_tsprob$mean_probTS), length.out = 100) )) %>%
+  group_by(strategy, gr=cut(mean_probTS, breaks = seq(from = 0, to = max(df_tsprob$mean_probTS), length.out = 100) )) %>%
   summarise(n = n(), 
             mean_probTS = mean(mean_probTS),
             pred_realTS = mean(mean_realTS),
@@ -407,6 +357,7 @@ df_tsprob <- df_tsprob %>%
          hight_realTS = case_when(hight_realTS < 0 ~ 0,
                                 hight_realTS > 1 ~ 1,
                                 TRUE ~ hight_realTS))
+rm(df_daily_nona)
 ```
 
 ```{r}
@@ -416,21 +367,35 @@ ggplot(data = df_tsprob) +
   geom_point(aes(x = mean_probTS, y = hight_realTS)) +
   ggtitle("Relationship between MAProbTS & RealProbTS with CI") +
   ylab("RealProbTS") +
-  xlab("MAProbTS")
+  xlab("MAProbTS") +
+  facet_wrap("strategy")
 ```
 
-## RealProbTS 
+### RealProbTS 
 
 Correspond MAProbTS & RealProbTS in historical data.
 
 ```{r}
 get_realCI95probTSbyMAprob <- function(prob, df_tsprob) {
-  index <- which.min(abs(df_tsprob$mean_probTS-prob))
-  df_tsprob[index,c("pred_realTS","low_realTS","hight_realTS")]
+  if (is.nan(prob) == T) {
+    data.frame("pred_realTS" = NA,
+               "low_realTS" = NA,
+               "hight_realTS" = NA)
+    
+  } else {
+      index <- which.min(abs(df_tsprob$mean_probTS-prob))
+      df_tsprob[index,c("pred_realTS","low_realTS","hight_realTS")]
+  }
 }
 
+df_daily$RealProbTS       <- as.numeric(NA)
+df_daily$RealProbTS_low   <- as.numeric(NA)
+df_daily$RealProbTS_hight <- as.numeric(NA)
+
 for (index in 1:nrow(df_daily)) {
-  realTS95CI <- get_realCI95probTSbyMAprob(df_daily[index,"probTS"], df_tsprob = df_tsprob)
+  strategy <- df_daily[index,"strategy"][[1]]
+  realTS95CI <- get_realCI95probTSbyMAprob(df_daily[index,"probTS"][[1]], 
+                                           df_tsprob = df_tsprob[which(df_tsprob$strategy == strategy),])
   df_daily[index,"RealProbTS"] <- realTS95CI[1,"pred_realTS"][[1]]
   df_daily[index,"RealProbTS_low"] <- realTS95CI[1,"low_realTS"][[1]]
   df_daily[index,"RealProbTS_hight"] <- realTS95CI[1,"hight_realTS"][[1]]
@@ -440,136 +405,167 @@ for (index in 1:nrow(df_daily)) {
 ```{r}
 ggplot(data = df_daily) +
   geom_point(aes(x = date, y = RealProbTS)) +
-  ggtitle("Trade stop probability timeline")
+  ggtitle("Trade stop probability timeline") +
+  facet_wrap("strategy")
 ```
 
-# SD
-
-Создадим таблицу с данными по количеству стоптрейдов за предыдущие N дней.
+# Mean & SD for vafriabels
 
 ```{r}
-sliding_depth <- 30
-
-for (n in 1:sliding_depth) {
-  df_daily[,paste0("PRFpr",n)] <- c(rep(NA,n), head(df_daily$profit,-n))
+vColNames <- c("profit", "bartime", "barprofit", "MAE", "MFE")
+df_daily <- makePrColForStrategy(df_strategy = df_daily,
+                                 vColNames = vColNames,
+                                 sliding_depth = sliding_depth)
+# creating MA
+for (vColName in vColNames) {
+  for (n in 2:sliding_depth) {
+    df_daily[,paste0(vColName,"_SDMA",n)]   <- apply(df_daily[,paste0(vColName,"_Pr",1:n)],1,sd,  na.rm = F)
+    df_daily[,paste0(vColName,"_meanMA",n)] <- apply(df_daily[,paste0(vColName,"_Pr",1:n)],1,mean,na.rm = F)
+  }
+  # del _Pr columns
+  drops <- c(paste0(vColName,"_Pr",1:sliding_depth))
+  df_daily <- df_daily[ , !(names(df_daily) %in% drops)]
+  
+  df_daily[,paste0(vColName,"_SDSD")]   <- apply(df_daily[,paste0(vColName,"_SDMA",    2:sliding_depth)],1,sd,  na.rm = F)
+  df_daily[,paste0(vColName,"_SDmean")] <- apply(df_daily[,paste0(vColName,"_SDMA",    2:sliding_depth)],1,mean,na.rm = F)
+  df_daily[,paste0(vColName,"_meanSD")]   <- apply(df_daily[,paste0(vColName,"_meanMA",2:sliding_depth)],1,sd,  na.rm = F)
+  df_daily[,paste0(vColName,"_meanmean")] <- apply(df_daily[,paste0(vColName,"_meanMA",2:sliding_depth)],1,mean,na.rm = F)
+  
+  # del _MA columns
+  drops <- c(paste0(vColName,"_SDMA",  2:sliding_depth),
+             paste0(vColName,"_meanMA",2:sliding_depth))
+  df_daily <- df_daily[ , !(names(df_daily) %in% drops)]
 }
-
-for (n in 2:sliding_depth) {
-  df_daily[,paste0("PRFMAprSD",n)] <- apply(df_daily[,paste0("PRFpr",1:n)],1,sd,na.rm = F)
-}
-```
-
-```{r, message=F,warning=F}
-df_daily$meanSD <- apply(df_daily[,paste0("PRFMAprSD",2:sliding_depth)],1,mean,na.rm = F)
-df_daily$SDSD   <- apply(df_daily[,paste0("PRFMAprSD",2:sliding_depth)],1,sd,na.rm = F)
 ```
 
 ```{r}
-df_daily$SDPRF       <- qnorm(c(0.5)  , mean = df_daily$meanSD, sd = df_daily$SDSD)
-df_daily$SDPRF_low   <- qnorm(c(0.025), mean = df_daily$meanSD, sd = df_daily$SDSD)
-df_daily$SDPRF_hight <- qnorm(c(0.975), mean = df_daily$meanSD, sd = df_daily$SDSD)
-```
-
-
-Delete unused columns
-```{r}
-drops <- c(paste0("PRFpr",1:sliding_depth),
-           paste0("PRFMAprSD",2:sliding_depth),
-           "meanSD", "SDSD")
-
-df_daily <- df_daily[ , !(names(df_daily) %in% drops)]
+for (vColName in vColNames) {
+  df_daily[,paste0(vColName,"_pred")]   <- qnorm(c(0.5),
+                                                 mean = df_daily[,paste0(vColName,"_meanmean")][[1]],
+                                                 sd =   df_daily[,paste0(vColName,"_meanSD")][[1]])
+  df_daily[,paste0(vColName,"_low")]   <- qnorm(c(0.025),
+                                                 mean = df_daily[,paste0(vColName,"_meanmean")][[1]],
+                                                 sd =   df_daily[,paste0(vColName,"_meanSD")][[1]])
+  df_daily[,paste0(vColName,"_hight")]   <- qnorm(c(0.975),
+                                                 mean = df_daily[,paste0(vColName,"_meanmean")][[1]],
+                                                 sd =   df_daily[,paste0(vColName,"_meanSD")][[1]])
+  
+  df_daily[,paste0(vColName,"_predSD")] <- qnorm(c(0.5),
+                                                 mean = df_daily[,paste0(vColName,"_SDmean")][[1]],
+                                                 sd =   df_daily[,paste0(vColName,"_SDSD")][[1]])
+  df_daily[,paste0(vColName,"_lowSD")] <- qnorm(c(0.025),
+                                                 mean = df_daily[,paste0(vColName,"_SDmean")][[1]],
+                                                 sd =   df_daily[,paste0(vColName,"_SDSD")][[1]])
+  df_daily[,paste0(vColName,"_hightSD")] <- qnorm(c(0.975),
+                                                 mean = df_daily[,paste0(vColName,"_SDmean")][[1]],
+                                                 sd =   df_daily[,paste0(vColName,"_SDSD")][[1]])
+  # del _MA columns
+  drops <- c(paste0(vColName,"_meanmean"),
+             paste0(vColName,"_meanSD"),
+             paste0(vColName,"_SDmean"),
+             paste0(vColName,"_SDSD"))
+  df_daily <- df_daily[ , !(names(df_daily) %in% drops)]
+  }
 ```
 
 # PROFIT
 ## ProfitTS distribution
 
 ```{r}
-df_daily_nona <- na.omit(df_daily)
+summary(df_daily$profit)
+```
 
-indexTS <- which(df_daily_nona$tradestop == 1)
-TSprofit <- mean(df_daily_nona[indexTS,"profit"])
 
-df_dailyTS <- df_daily_nona %>%
+```{r}
+df_dailyTS <- na.omit(df_daily)
+
+df_TSprofit <- df_dailyTS %>%
+  filter(tradestop == 1) %>%
+  group_by(strategy) %>%
+  summarise(TSprofit = mean(profit))
+
+df_dailyTS <- merge(df_dailyTS, df_TSprofit, by = "strategy", all.x = T)
+
+df_dailyTS <- df_dailyTS %>%
   mutate(profitTS = case_when(tradestop == 1 ~ TSprofit*RealProbTS,
                               TRUE ~ profit+TSprofit*RealProbTS))
   
 ggplot(data = df_dailyTS) +
   geom_density(aes(x = profitTS), color="darkred", fill="#FF6666", alpha=.3) +
-  ggtitle("Expected profit distribution (profitTS)")
+  ggtitle("Expected profit distribution (profitTS)") +
+  facet_wrap("strategy")
+df_dailyTS$TSprofit
+
+drops <- c("TSprofit")
+df_dailyTS <- df_dailyTS[ , !(names(df_dailyTS) %in% drops)]
 ```
 
 ## RealProbTS-ProfitTS
 
 ```{r}
-df_dailyTS %>% 
-  group_by(gr=cut(RealProbTS, breaks = seq(from = min(df_dailyTS$RealProbTS), to = max(df_dailyTS$RealProbTS), length.out = 20) )) %>%
-  summarise(n = n(), 
-            RealProbTS = mean(RealProbTS),
-            profitTS = mean(profitTS)) %>%
-  ggplot(aes(x = RealProbTS, y = profitTS)) +
-  geom_point() +
-  ggtitle("Relationship between RealParTS & profitTS") +
-  geom_smooth(method = "lm")
+names(df_dailyTS)
 ```
 
-```{r}
-df_cumProfitTS <- data.frame(profitTS = numeric(),
-                             RealProbTS = numeric(),
-                             n = numeric())
-groups <- seq(from = min(df_dailyTS$RealProbTS), to = max(df_dailyTS$RealProbTS), length.out = 20)
 
-for (group in groups) {
-  index <- which(df_dailyTS$RealProbTS <= group)
-  profitTS <- mean(df_dailyTS[index,"profitTS"])
-  n = length(index)
-  df_cumProfitTS <- rbind(df_cumProfitTS, data.frame(profitTS = profitTS,
-                                                     RealProbTS = group,
-                                                     n = n))
+```{r, message=FALSE}
+vVariables <- names(df_dailyTS)[21:24]
+df_dailyTS$sumVariable <- as.numeric(NA)
+
+for (vStrategy in vStratedies) {
+  indexSTR <- which(df_daily$strategy == vStrategy)
+  
+  for (vVariable in vVariables) {
+    
+    vMin <- min(df_dailyTS[indexSTR,vVariable], na.rm = T)
+    vMax <- max(df_dailyTS[indexSTR,vVariable], na.rm = T)
+    
+    df_dailyTS[,"gr"] <- NA
+    df_dailyTS[indexSTR,"gr"] <- cut(df_dailyTS[indexSTR,vVariable], 
+                                     breaks = seq(from = vMin,
+                                                  to = vMax,
+                                                  length.out = 20))
+    df_dailyTS[indexSTR,"sumVariable"] <- df_dailyTS[indexSTR,vVariable]
+    
+    print(
+    df_dailyTS[indexSTR,] %>% 
+      group_by(gr) %>%
+      summarise(sumVariable = mean(sumVariable),
+                profitTS = mean(profitTS)) %>%
+      filter(!is.na(sumVariable)) %>%
+      ggplot(aes(x = sumVariable, y = profitTS)) +
+      geom_point() +
+      ggtitle(paste0("Relationship between ",vVariable," & profitTS for ", vStrategy)) +
+      xlab(vVariable) +
+      ylab("profitTS") +
+      geom_smooth(method = "lm")
+    )
+  }
 }
-
-df_cumProfitTS %>%
-  ggplot(aes(x = RealProbTS, y = profitTS)) +
-  geom_point() +
-  ggtitle("Cumulative Relationship between RealParTS & profitTS") +
-  geom_smooth(method = "lm")
-```
-
-## SDPRF-ProfitTS
-
-```{r}
-df_dailyTS %>% 
-  group_by(gr=cut(SDPRF, breaks = seq(from = min(df_dailyTS$SDPRF), to = max(df_dailyTS$SDPRF), length.out = 20) )) %>%
-  summarise(n = n(), 
-            SDPRF = mean(SDPRF),
-            profitTS = mean(profitTS)) %>%
-  ggplot(aes(x = SDPRF, y = profitTS)) +
-  geom_point() +
-  ggtitle("Relationship between SDPRF & profitTS") +
-  geom_smooth(method = "lm")
 ```
 
 ```{r}
-df_cumProfitTS <- data.frame(profitTS = numeric(),
-                             SDPRF = numeric(),
-                             n = numeric())
-groups <- seq(from = min(df_dailyTS$SDPRF), to = max(df_dailyTS$SDPRF), length.out = 20)
-
-for (group in groups) {
-  index <- which(df_dailyTS$SDPRF <= group)
-  profitTS <- mean(df_dailyTS[index,"profitTS"])
-  n = length(index)
-  df_cumProfitTS <- rbind(df_cumProfitTS, data.frame(profitTS = profitTS,
-                                                     SDPRF = group,
-                                                     n = n))
-}
-
-df_cumProfitTS %>%
-  filter(n > 10) %>%
-  ggplot(aes(x = SDPRF, y = profitTS)) +
-  geom_point() +
-  ggtitle("Cumulative Relationship between RealParTS & profitTS") +
-  geom_smooth(method = "lm")
+#df_cumProfitTS <- data.frame(profitTS = numeric(),
+#                             RealProbTS = numeric(),
+#                             n = numeric())
+#groups <- seq(from = min(df_dailyTS$RealProbTS), to = max(df_dailyTS$RealProbTS), length.out = 20)
+#
+#for (group in groups) {
+#  index <- which(df_dailyTS$RealProbTS <= group)
+#  profitTS <- mean(df_dailyTS[index,"profitTS"])
+#  n = length(index)
+#  df_cumProfitTS <- rbind(df_cumProfitTS, data.frame(profitTS = profitTS,
+#                                                     RealProbTS = group,
+#                                                     n = n))
+#}
+#
+#df_cumProfitTS %>%
+#  ggplot(aes(x = RealProbTS, y = profitTS)) +
+#  geom_point() +
+#  ggtitle("Cumulative Relationship between RealParTS & profitTS") +
+# geom_smooth(method = "lm")
 ```
+
+
 
 # Decision-making section
 
@@ -577,6 +573,7 @@ df_cumProfitTS %>%
 ```{r}
 names(df_daily)
 ```
+
 ```{r}
 vMeanProfit <- mean(df_daily$profit)
 ```
@@ -584,6 +581,82 @@ vMeanProfit <- mean(df_daily$profit)
 ```{r}
 vYears <- unique(df_dailyTS$year)
 vYears <- vYears[1:7]
+```
+
+```{r}
+names(df_dailyTS)
+```
+
+### variables
+
+Finish work for variable numeric grouping
+```{r}
+vVariable <- "wday"
+df_dailyTS$sumVariable <- df_dailyTS[,vVariable]
+
+g_variables <- 
+  df_dailyTS %>%
+  filter(year %in% vYears) %>%
+  
+  group_by(strategy) %>%
+  mutate(profitTS_Mean_Strategy = mean(profitTS),
+         profitTS_SD_Strategy   = sd(profitTS),
+         profitTS_n_Strategy    = n()) %>%
+  
+  group_by(strategy, year) %>%
+  mutate(profitTS_Mean_StrategyYear = mean(profitTS),
+         profitTS_SD_StrategyYear   = sd(profitTS),
+         profitTS_n_StrategyYear    = n()) %>%
+    
+  group_by(strategy, sumVariable) %>%
+  mutate(profitTS_Mean_StrategyVariable = mean(profitTS),
+         profitTS_SD_StrategyVariable   = sd(profitTS),
+         profitTS_n_StrategyVariable    = n()) %>%
+  
+  group_by(strategy, year, sumVariable) %>%
+  mutate(profitTS_Mean_StrategyYearVariable = mean(profitTS),
+         profitTS_SD_StrategyYearVariable   = sd(profitTS),
+         profitTS_n_StrategyYearVariable    = n()) %>%
+  
+  summarise(profitTS_Mean_Strategy = profitTS_Mean_Strategy[1],
+            profitTS_SD_Strategy = profitTS_SD_Strategy[1],
+            profitTS_n_Strategy = profitTS_n_Strategy[1],
+            
+            profitTS_Mean_StrategyYear = profitTS_Mean_StrategyYear[1],
+            profitTS_SD_StrategyYear = profitTS_SD_StrategyYear[1],
+            profitTS_n_StrategyYear = profitTS_n_StrategyYear[1],
+            
+            profitTS_Mean_StrategyVariable = profitTS_Mean_StrategyVariable[1],
+            profitTS_SD_StrategyVariable = profitTS_SD_StrategyVariable[1],
+            profitTS_n_StrategyVariable = profitTS_n_StrategyVariable[1],
+            
+            profitTS_Mean_StrategyYearVariable = profitTS_Mean_StrategyYearVariable[1],
+            profitTS_SD_StrategyYearVariable = profitTS_SD_StrategyYearVariable[1],
+            profitTS_n_StrategyYearVariable = profitTS_n_StrategyYearVariable[1],
+            
+            variability_absolute_profitTS_Gr_vs_Strategy     = (profitTS_Mean_StrategyYearVariable  - profitTS_Mean_Strategy)^2,
+            variability_absolute_profitTS_Gr_vs_StrategyYear = (profitTS_Mean_StrategyYearVariable  - profitTS_Mean_StrategyYear)^2,
+            variability_absolute_profitTS_StrategyYear_vs_Strategy = (profitTS_Mean_StrategyYear  - profitTS_Mean_Strategy)^2,
+            
+            variability_relative_profitTS_Gr_vs_Strategy     = abs(profitTS_Mean_StrategyYearVariable/profitTS_Mean_Strategy),
+            variability_relative_profitTS_Gr_vs_StrategyYear = abs(profitTS_Mean_StrategyYearVariable/profitTS_Mean_StrategyYear),
+            variability_relative_profitTS_StrategyYear_vs_Strategy = abs(profitTS_Mean_StrategyYear/profitTS_Mean_Strategy)) %>%
+    
+    group_by(strategy, sumVariable) %>%
+    summarise(
+      variable = vVariable,
+      profitTS_Mean = profitTS_Mean_StrategyVariable[1],
+      profitTS_SD   = profitTS_SD_StrategyVariable[1],
+      profitTS_n    = profitTS_n_StrategyVariable[1],
+      
+      variability_abs_total       = sum(variability_absolute_profitTS_Gr_vs_Strategy),
+      variability_abs_insideYear  = sum(variability_absolute_profitTS_Gr_vs_StrategyYear),
+      variability_abs_betweenYear = sum(variability_absolute_profitTS_StrategyYear_vs_Strategy),
+      
+      variability_rel_total       = mean(variability_relative_profitTS_Gr_vs_Strategy),
+      variability_rel_insideYear  = mean(variability_relative_profitTS_Gr_vs_StrategyYear),
+      variability_rel_betweenYear = mean(variability_relative_profitTS_StrategyYear_vs_Strategy)
+      )
 ```
 
 ### wday
