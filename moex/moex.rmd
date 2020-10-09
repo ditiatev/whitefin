@@ -46,8 +46,10 @@ df_strategy <- read.csv("./data/strategy/strategy.csv",
 vYears <- c("2008", "2009", "2010", "2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018")
 
 df_daily <- df_strategy %>%
-  filter(year %in% vYears[1:12])
+  filter(year %in% vYears[1:12]) %>%
+  filter(strategy == "RTS_18_22")
 df_daily$index <- row.names(df_daily)
+df_daily$strategy <- as.factor(as.character(df_daily$strategy))
 
 vStrategies <- unique(df_daily$strategy)
 ```
@@ -74,240 +76,54 @@ df_index_moex        <- read.csv("./data/index_moex_20080101_20200331.csv")
 df_index_moex_readme <- read.csv("./data/index_moex_readme_20080101_20200331.csv")
 ```
 
-# EDA
-## PROFIT
+# Get moex indexes
+```{r}
+vColNamesMoex <- names(df_index_moex)
+vColNamesMoexRTS <- grep(("RTSI|IMOEX|MOEX10|MOEXFN|tradedate"), vColNamesMoex, value = T)
+vColNamesMoexRTS <- c(vColNamesMoexRTS,c("value.RTStn", "capitalization.RTStn", 
+                                         "value.RTStl", "capitalization.RTStl",
+                                         "value.RTS2",  "capitalization.RTS2",  
+                                         "value.RTSch", 
+                                         "value.RTSeu", "capitalization.RTSeu", 
+                                         "value.RTSfn", "capitalization.RTSfn",
+                                         "value.RTSin", "capitalization.RTSin", 
+                                         "value.RTSmm", "capitalization.RTSmm",
+                                         "value.RTSSIB","capitalization.RTSSIB",
+                                         "value.RTScr", "capitalization.RTScr",
+                                         "value.RTSog", "capitalization.RTSog",
+                                         "capitalization.RTSTR",
+                                         "capitalization.RTSTRN",
+                                         "capitalization.RTSTRR"))
 
-## All period
+df_index_moexRTS <- df_index_moex[,vColNamesMoexRTS]
+drops <- c(grep(("RTSIN"), vColNamesMoexRTS, value = T),
+           "capitalization.IMOEX",
+           "capitalization.MOEX10",
+           "capitalization.MOEXFN")
+df_index_moexRTS <- df_index_moexRTS[ , !(names(df_index_moexRTS) %in% drops)]
+df_index_moexRTS[sapply(df_index_moexRTS, is.infinite)] <- NA
+df_index_moexRTS$tradedate <- as.Date(df_index_moexRTS$tradedate)
+vColNamesMoexRTS <- names(df_index_moexRTS)
+rm(df_index_moex)
+```
+
+# Merge index into work set
 
 ```{r}
-ggplot(data = df_daily, aes(x = profit, fill= yday(date))) +
-  geom_density(aes(x=profit), color="green4", fill="lightgreen", alpha=.3) +
-  ggtitle("Profit distribution by all data") +
-  facet_wrap("strategy")
+df_daily$date <- as.Date(df_daily$date)
+df_daily <- merge(df_daily, df_index_moexRTS, by.x = "date", by.y = "tradedate", all.x = TRUE)
 ```
 
-## MeanProfit by years
-
-```{r}
-df_daily %>%
-        group_by(strategy, year) %>%
-        summarise(x_bar = mean(profit), x_sd = sd(profit), x_median = median(profit), n = n())
-```
-
-```{r}
-df_daily %>%
-  group_by(strategy, year) %>%
-  summarise(x_bar = mean(profit), x_sd = sd(profit), x_median = median(profit), n = n())
-```
-
-
-```{r, message=FALSE, warning=FALSE}
-branch <- "./plots/eda/meanProfit_by_year/"
-
-for (vStrategy in vStrategies) {
-  
-  sGGplot <- df_daily %>%
-    filter(strategy == vStrategy) %>%
-    group_by(year) %>%
-    summarise(x_bar = mean(profit), x_sd = sd(profit), year = year[1]) %>%
-    ggplot() +
-    geom_col(aes(y = x_bar, x = year, fill = year), position = 'dodge')
-  
-  saveGGplot(sGGplot,branch,vStrategy)
-}
-opendir(branch)
-```
-
-sd - profit
-
-```{r,message=FALSE, warning=FALSE}
-branch <- "./plots/eda/relationshipSDProfit_and_meanProfit_by_year/"
-
-for (vStrategy in vStrategies) {
-  
-  sGGplot <- df_daily %>%
-    filter(strategy == vStrategy) %>%
-    group_by(strategy, year) %>%
-    summarise(profit_mean = mean(profit), profit_sd = sd(profit),strategy = strategy[1]) %>%
-    ggplot(aes(y = profit_mean, x = profit_sd)) +
-    geom_point() +
-    geom_smooth(method = "lm") +
-    ggtitle(paste0("Relationship sd & mean profit for ",vStrategy))
-  
-  saveGGplot(sGGplot,branch,vStrategy)
-}
-opendir(branch)
-```
-
-## Months
-
-```{r}
-branch <- "./plots/eda/meanProfit_by_monts/"
-for (vStrategy in vStrategies){
-  sGGplot <- df_daily %>%
-    filter(strategy == vStrategy) %>%
-    group_by(month) %>%
-    summarise(x_bar = mean(profit), month = month[1]) %>%
-    ggplot(aes(y = x_bar, x = month, fill = month)) +
-    geom_col(position = 'dodge')
-
-    saveGGplot(sGGplot,branch,vStrategy)
-}
-#opendir(branch)
-```
-
-sd - profit
-
-```{r}
-branch <- "./plots/eda/Sd_Profit_by_monts/"
-for (vStrategy in vStrategies){
-  sGGplot <- df_daily %>%
-    filter(strategy == vStrategy) %>%
-    group_by(month) %>%
-    summarise(profit_mean = mean(profit), profit_sd = sd(profit),strategy = strategy[1]) %>%
-    ggplot(aes(y = profit_mean, x = profit_sd)) +
-    geom_point() +
-    geom_smooth(method = "lm") +
-    ggtitle(paste0("Relationship sd & mean profit for ",vStrategy))
-
-    saveGGplot(sGGplot,branch,vStrategy)
-}
-opendir(branch)
-```
-
-## Days
-
-```{r}
-df_daily %>%
-        group_by(strategy,wday) %>%
-        summarise(x_bar = mean(profit), x_sd = sd(profit), x_median = median(profit), n = n())
-```
-
-
-```{r}
-branch <- "./plots/eda/SDProfit_by_days/"
-for (vStrategy in vStrategies){
-  sGGplot <- df_daily %>%
-    filter(strategy == vStrategy) %>%
-    group_by(wday) %>%
-    summarise(x_bar = mean(profit), wday = wday[1]) %>%
-    filter(wday %in% c(1,2,3,4,5)) %>%
-    ggplot(aes(y = x_bar, x = wday, fill = wday)) +
-    geom_col(position = 'dodge')  +
-    ggtitle(paste0("Mean profit by days for ",vStrategy))
-  
-  saveGGplot(sGGplot,branch,vStrategy)
-}
-opendir(branch)
-```
-
-sd - profit
-
-```{r}
-branch <- "./plots/eda/SD_Profit_by_days/"
-for (vStrategy in vStrategies){
-  sGGplot <- df_daily %>%
-    filter(strategy == vStrategy) %>%
-    group_by(wday) %>%
-    summarise(x_bar = mean(profit), x_sd = sd(profit)) %>%
-    ggplot(aes(y = x_bar, x = x_sd)) +
-    geom_point() +
-    geom_smooth(method = "lm") +
-    ggtitle(paste0("Sd & mean profit by days for ",vStrategy))
-  
-  saveGGplot(sGGplot,branch,vStrategy)
-}
-opendir(branch)
-
-```
-
-## Position
-
-```{r}
-df_daily %>%
-        group_by(strategy, position) %>%
-        summarise(x_bar = mean(profit), x_sd = sd(profit), x_median = median(profit), n = n())
-```
-
-
-```{r}
-branch <- "./plots/eda/Profit_by_position/"
-for (vStrategy in vStrategies){
-  sGGplot <- df_daily %>%
-    filter(strategy == vStrategy) %>%
-    group_by(position) %>%
-    summarise(x_bar = mean(profit), position = position[1]) %>%
-    ggplot(aes(y = x_bar, x = position, fill = position)) +
-    geom_col(position = 'dodge') +
-    ggtitle(paste0("Profit by position for ",vStrategy))
-  
-  saveGGplot(sGGplot,branch,vStrategy)
-}
-opendir(branch)
-```
-
-
-## Trade stop
-
-```{r}
-df_daily %>%
-        group_by(strategy, tradestop) %>%
-        summarise(mean_profit = mean(profit), sd_profit = sd(profit), median_profit = median(profit), n = n())
-```
-
-
-```{r}
-branch <- "./plots/eda/Profit_by_TradeStop/"
-for (vStrategy in vStrategies){
-  sGGplot <- df_daily %>%
-    filter(strategy == vStrategy) %>%
-    group_by(tradestop) %>%
-    summarise(mean_profit = mean(profit), tradestop = tradestop[1]) %>%
-    ggplot(aes(y = mean_profit, x = as.factor(tradestop), fill = as.factor(tradestop))) +
-    geom_col(position = 'dodge') +
-    ggtitle(paste0("Profit by trade stop for ",vStrategy))
-  
-  saveGGplot(sGGplot,branch,vStrategy)
-}
-opendir(branch)
-```
-
-## TRADE STOP
-
-### Trend
-```{r}
-branch <- "./plots/eda/TrendForTradeStopProbByMonth/"
-for (vStrategy in vStrategies){
-  sGGplot <- df_daily %>%
-    filter(strategy == vStrategy) %>%
-    group_by(year,month) %>%
-    mutate(n = n()) %>%
-    filter(tradestop == TRUE) %>%
-    summarise(n_stop = n(), n = n[1], freq = n_stop/n,date = ymd(paste(year, month, "01", sep= ' '))) %>%
-    ggplot() +
-    geom_line(aes(x = date, y = freq), color="darkred") +
-    ggtitle(paste0("Trade stop probability calculated by calendar month ",vStrategy))
-  
-  saveGGplot(sGGplot,branch,vStrategy)
-}
-opendir(branch)
-```
-
-# MA
+# ProbTS
 
 Создадим таблицу с данными по количеству стоптрейдов за предыдущие N дней.
-
 ```{r}
 sliding_depth <- 30
-vColNames <- c("tradestop","profit","bartime","barprofit","MAE","MFE")
-
 source("./scripts/makePrColForStrategy.r")
 df_daily <- makePrColForStrategy(df_strategy = df_daily,
                                  vColNames = "tradestop",
                                  sliding_depth = sliding_depth)
 ```
-
-## ProbTS
 
 ```{r}
 for (n in 2:sliding_depth) {
@@ -420,7 +236,8 @@ for (strategy in vStratedies) {
 
 # transform data to predicted and ci values
 df_tsprob <- df_tsprob %>% 
-  group_by(strategy, gr=cut(mean_probTS, breaks = seq(from = 0, to = max(df_tsprob$mean_probTS), length.out = 100) )) %>%
+  group_by(strategy, gr=cut(mean_probTS, 
+                            breaks = seq(from = 0, to = 1, length.out = 100) )) %>%
   summarise(n = n(), 
             mean_probTS = mean(mean_probTS),
             pred_realTS = mean(mean_realTS),
@@ -500,10 +317,13 @@ for (vStrategy in vStrategies){
 opendir(branch)
 ```
 
-## Pred, low & hight value for variabels base on MA
+# Other MA variabels
 
 ```{r}
-vColNames <- c("profit", "bartime", "barprofit", "MAE", "MFE", "entryprice", "exitprice")
+vColNames <- c("profit", "bartime", "barprofit", 
+               "MAE", "MFE", "entryprice", "exitprice", 
+               vColNamesMoexRTS[2:length(vColNamesMoexRTS)])
+
 df_daily <- makePrColForStrategy(df_strategy = df_daily,
                                  vColNames = vColNames,
                                  sliding_depth = sliding_depth)
@@ -558,14 +378,9 @@ for (vColName in vColNames) {
 ```
 
 # ProfitTS
-## ProfitTS distribution
-
 ```{r}
-summary(df_daily$profit)
-```
-
-```{r}
-df_dailyTS <- na.omit(df_daily)
+df_dailyTS <- df_daily %>%
+  filter(!is.na(probTS))
 
 df_TSprofit <- df_dailyTS %>%
   filter(tradestop == 1) %>%
@@ -581,13 +396,13 @@ drops <- c("TSprofit")
 df_dailyTS <- df_dailyTS[ , !(names(df_dailyTS) %in% drops)]
 ```
 
-
 ```{r}
 branch <- "./plots/eda/expected profit distribution/"
 for (vStrategy in vStrategies){
   sGGplot <- df_dailyTS %>%
     filter(strategy == vStrategy) %>%
     ggplot() + 
+    geom_density(aes(x = profit), color="cadetblue4", fill="cadetblue4", alpha=.3) +
     geom_density(aes(x = profitTS), color="darkred", fill="#FF6666", alpha=.3) +
     ggtitle(paste0("Expected profit distribution (profitTS) for ", vStrategy))
   
@@ -596,11 +411,7 @@ for (vStrategy in vStrategies){
 opendir(branch)
 ```
 
-## RealProbTS-ProfitTS
 
-```{r}
-names(df_dailyTS)
-```
 
 # sGGplot for numeric variable
 ## profitTS
@@ -610,7 +421,7 @@ if (!file.exists(branch)) {
                 dir.create(branch)
 }
 
-vVariables <- names(df_dailyTS)[c(6:7,16:61)]
+vVariables <- names(df_dailyTS)[c(16:376)]
 df_dailyTS$sumVariable <- as.numeric(NA)
 
 for (vStrategy in vStrategies) {
@@ -645,132 +456,269 @@ for (vStrategy in vStrategies) {
 }
 ```
 
-## profit
+# Decision-making section
+
+## Grouping
+
+```{r}
+vVariables_row <- names(df_dailyTS)[c(13,14,16:376)]
+vVariables <- grep(("_low|_hight|_pred"), vVariables_row, value = T)
+vVariables <- c(vVariables,c("probTS","RealProbTS","month","wday"))
+```
+
+```{r, message=F, warning=F}
+make_groups <- function(df_dailyTS, vVariables, nBoot = 8) {
+  
+  get_index <- function(df = df_dailyTS) {
+      df_index <- df %>%
+        group_by(strategy) %>%
+        summarise(start = min(index),stop = max(index),strategy = strategy[1]) %>%
+        group_by(strategy) %>%
+        summarise(index = sample(start:stop, stop-start, replace = T))
+      vIndex <- df_index$index
+      vIndex
+  }
+  
+  get_group <- function(df_dailyTS) {
+    
+    if (is.numeric(df_dailyTS$variable) == T) {
+      
+      df_group <- df_dailyTS %>%
+        group_by(sumVariable) %>%
+        summarise(variableName = vVariable,
+                  variableValue  = mean(variable, na.rm = T),
+                  variableFactor = "numeric",
+                  profitMean = mean(profitTS),
+                  ProfitSD = sd(profitTS),
+                  n = n())
+      
+    } else {
+      df_group <- df_dailyTS %>%
+        group_by(sumVariable) %>%
+        summarise(variableName = vVariable,
+                  variableValue  = 0,
+                  variableFactor = as.character(variable[1]),
+                  profitMean = mean(profitTS),
+                  ProfitSD = sd(profitTS),
+                  n = n())
+      }
+
+        df_group$group <- row.names(df_group)
+        df_group <- df_group[ , !(names(df_group) == "sumVariable")]
+
+                df_group
+                }
+  
+  create_grouping_variable <- function(df_dailyTS) {
+    if (is.numeric(df_dailyTS[,"variable"][[1]])) {
+      
+      # for numeric
+      df_dailyTS <- df_dailyTS %>%
+        group_by(strategy) %>%
+        arrange(variable) %>%
+        mutate(gr_index = 1:max(n())) %>%
+        group_by(gr_index,
+                 sumVariable = cut(gr_index,
+                                   breaks = seq(from = 1,
+                                                to = max(n()),
+                                                length.out = ceiling((max(n())/100)+1))))
+      
+    } else {
+      df_dailyTS$sumVariable <- df_dailyTS[,"variable"]
+    }
+    df_dailyTS
+    }
+
+  df_groups <- data.frame(
+                          variableName = character(),
+                          variableFactor = character(),
+                          variableValue = double(),
+                          profitMean = double(),
+                          ProfitSD = double(),
+                          n = integer(),
+                          group = character())
+  
+  # get bootstrap indexes 
+  df_dailyTS <- df_dailyTS[ , !(names(df_dailyTS) %in% c("index"))]
+  df_dailyTS <- df_dailyTS %>%
+    arrange(strategy,date)
+  df_dailyTS$index <- 1:nrow(df_dailyTS)
+  l_indexes <- list()
+  for (boot in 1:nBoot) {
+    l_indexes[[boot]] <- get_index(df = df_dailyTS)
+  }
+  
+for (vVariable in vVariables) {
+  # create grouping variable
+  df_dailyTS[,"variable"] <- df_dailyTS[,vVariable]
+  df_dailyTS <- df_dailyTS[ , !(names(df_dailyTS) %in% c("sumVariable","cutVariable"))]
+  df_dailyTS <- create_grouping_variable(df_dailyTS = df_dailyTS)
+  
+  # create bootstrap df
+  for (boot in 1:nBoot) {
+    l_dailyTS[[boot]] <- df_dailyTS[l_indexes[[boot]],]
+  }
+  
+  # create groops
+  df_group <- dplyr::bind_rows(lapply(l_dailyTS,get_group))
+  df_groups <- dplyr::bind_rows(list(df_groups, df_group))
+}
+  
+df_groups
+}
+```
+
+
+```{r, message=F, warning=F}
+#Rprof()
+#Rprof(NULL)
+#s <- summaryRprof()
+#s
+```
+
+
+```{r, message=F, warning=F}
+df_groups <- make_groups(df_dailyTS = df_dailyTS, vVariables = vVariables, nBoot = 10)
+# calculate prob0
+df_groups <- df_groups %>%
+  filter(n != 1) %>%
+  mutate(profitSE = ProfitSD/sqrt(n),
+         t0 = 0 - profitMean/profitSE,
+         prob0 = round(pt(t0, (n-1)),4))
+```
+
+
+```{r}
+#write.csv(x=df_groups, file="./data/df_groups.csv", row.names = F)
+```
+
+### Stability for variable
+```{r}
+df_groups <- df_groups %>%
+  group_by(variableName, group) %>%
+  summarise(variableValue = mean(variableValue),
+            variableFactor = variableFactor[1],
+            sdProb0 = sd(prob0),
+            n = n(),
+            seProb0 = sdProb0/sqrt(n),
+            prob0 = mean(prob0)) %>%
+  mutate(seProb0 = if_else(seProb0 < 0.01, 0.01, seProb0),
+         weight = 1/((6*seProb0)^2))
+
+df_groups %>%
+  group_by(variableName) %>%
+  summarise(weight = median(weight), sd = median(sdProb0), se = median(seProb0)) %>%
+  arrange(desc(weight))
+```
+
+```{r}
+head(df_groups)
+```
+
+
+```{r}
+df_dailyTS[sapply(df_dailyTS, is.infinite)] <- NA
+```
+
+
+```{r}
+vColumns <- c("variableName", "group", "prob0", "variableValue", "weight")
+df_groups$group <- as.numeric(df_groups$group)
+
+# get matrix for groups
+df_groupsW <- reshape(data.frame(df_groups[,vColumns]),
+                      idvar = "group",
+                      v.names = c("prob0", "variableValue", "weight"),
+                      timevar = "variableName",
+                      direction = "wide")
+m_groupsW <- as.matrix(df_groupsW)
+vNRow <- nrow(m_groupsW)
+
+# prepare matrix from row from df_dayly
+m_RowDaily <- as.matrix(as.numeric(df_dailyTS[1368,vVariables]))
+m_RowDaily <- matrix(rep(m_RowDaily,each=vNRow),nrow=vNRow)
+
+# create abs diff
+m_min <- abs(m_groupsW[,paste0("variableValue.",vVariables)] - m_RowDaily)
+
+# find index of abs diff
+minindex <- apply(m_min, 2, which.min)
+
+
+m_prob0 <- m_groupsW[,paste0("prob0.",vVariables)]
+m_weight <- m_groupsW[,paste0("weight.",vVariables)]
+
+vNCol <- ncol(m_prob0)
+dim(m_prob0) <- c(vNRow*vNCol,1)
+dim(m_weight) <- c(vNRow*vNCol,1)
+minindex_in_row <- minindex + vNRow*(0:(vNCol-1))
+
+vProb0  <- m_prob0[minindex_in_row,1]
+vWeight <- m_weight[minindex_in_row,1]
+vWeight <- vWeight/sum(vWeight)
+
+vProb0w <- sum(vProb0*vWeight)
+```
+
+
+
+```{r}
+which(m_min == min(m_min, na.rm = T), arr.ind=TRUE)
+which(m_min == minindex, arr.ind=TRUE)
+```
+
+```{r}
+m_min[16,310]
+```
+
+
+
+```{r}
+head(df_groupsW)
+```
+
+
+## Ploting
+
+## prob0
+
 ```{r, message=FALSE}
-branch <- paste0("./plots/eda/profit/")
+branch <- paste0("./plots/eda/prob0_for_variable/")
 if (!file.exists(branch)) {
                 dir.create(branch)
 }
 
-vVariables <- names(df_dailyTS)[c(6:7,16:61)]
-df_dailyTS$sumVariable <- as.numeric(NA)
+vVariables <- names(df_dailyTS)[c(16:376)]
 
 for (vStrategy in vStrategies) {
-  indexSTR <- which(df_dailyTS$strategy == vStrategy)
-  
   for (vVariable in vVariables) {
     
-    vMin <- min(df_dailyTS[indexSTR,vVariable], na.rm = T)
-    vMax <- max(df_dailyTS[indexSTR,vVariable], na.rm = T)
-    
-    df_dailyTS[,"gr"] <- NA
-    df_dailyTS[indexSTR,"gr"] <- cut(df_dailyTS[indexSTR,vVariable], 
-                                     breaks = seq(from = vMin,
-                                                  to = vMax,
-                                                  length.out = 50))
-    df_dailyTS[indexSTR,"sumVariable"] <- df_dailyTS[indexSTR,vVariable]
-    
-    branch <- paste0("./plots/eda/profit/",vVariable,"/")
-    sGGplot <- df_dailyTS[indexSTR,] %>% 
-      group_by(gr) %>%
-      summarise(sumVariable = mean(sumVariable),
-                profitTS = mean(profitTS)) %>%
-      filter(!is.na(sumVariable)) %>%
-      ggplot(aes(x = sumVariable, y = profitTS)) +
+    branch <- paste0("./plots/eda/prob0_for_variable/",vVariable,"/")
+    sGGplot <- df_groups %>%
+      filter(strategy == vStrategy & variableName == vVariable) %>%
+      ggplot(aes(x = variableValue, y = prob0)) +
       geom_point(size=5) +
-      ggtitle(paste0("Relationship between ",vVariable," & profit for ", vStrategy)) +
+      ggtitle(paste0("Relationship between ",vVariable," & prob0 for ", vStrategy)) +
       xlab(vVariable) +
-      ylab("profitTS")
+      ylab("prob0")
     
     saveGGplot(sGGplot,branch,vStrategy)
   }
 }
 ```
 
-
-
-
-
-# Decision-making section
-
-## Grouping
-
-```{r}
-df_groups <- data.frame(strategy = character(),
-                        variableName = character(),
-                        variableFactor = character(),
-                        variableValue = double(),
-                        profitMean = double(),
-                        ProfitSD = double(),
-                        n = integer())
-
-
-vVariables <- names(df_dailyTS)[c(13:14,16:61)]
-
-for (vVariable in vVariables) {
-  df_dailyTS[,"variable"] <- df_dailyTS[,vVariable]
-  df_dailyTS <- df_dailyTS[ , !(names(df_dailyTS) == "sumVariable")]
-
-  # create grouping variable
-  if (is.numeric(df_dailyTS[,"variable"][[1]])) {
-  
-  # for numeric
-  df_dailyTS <- df_dailyTS %>%
-    group_by(strategy) %>%
-    mutate(minCutVariable = min(variable, na.rm = T),
-           maxCutVariable = max(variable, na.rm = T)) %>%
-    group_by(strategy,
-             sumVariable = cut(variable,
-                               breaks = seq(from = minCutVariable[1],
-                                            to = maxCutVariable[1],
-                                            length.out = 11))) 
-  } else {
-    df_dailyTS$sumVariable <- df_dailyTS[,"variable"]
-  }
-
-  # summary
-  df_group <- df_dailyTS %>%
-    group_by(strategy, sumVariable) %>%
-    summarise(variableName = vVariable,
-              variableValue  = if_else(is.numeric(variable) == T, mean(variable), 0),
-              variableFactor = if_else(is.numeric(variable) == T, "numeric", as.character(variable[1])),
-              profitMean = mean(profitTS),
-              ProfitSD = sd(profitTS),
-              n = n())
-  df_group <- df_group[ , !(names(df_group) == "sumVariable")]
-  df_group$strategy <- as.character(df_group$strategy)
-
-  # united
-  df_groups <- dplyr::bind_rows(list(df_groups, df_group))
-}
-
-# calculate prob0
-df_groups <- df_groups %>%
-  mutate(profitSE = ProfitSD/sqrt(n),
-         t0 = 0 - profitMean/profitSE,
-         prob0 = round(pt(t0, (n-1)),4))
-
-head(df_groups)
-```
-
 ## Full table
 
-
 ```{r}
-vVariables <- names(df_dailyTS)[c(6,13:14,16:61)]
-
-get_prob0 <- function(vRow,vVariables,df_groups) {
+get_prob0 <- function(vRow,vVariables,df_gr) {
   
-  vStrategy <- vRow[["strategy"]]
-  df_GrStr <- df_groups[which(df_groups$strategy == vStrategy),]
   df_prob0 <- data.frame(variableName = character(),
-                         prob0 = double())
+                         prob0 = double(),
+                         weight = double())
   
   for (vVariable in vVariables) {
     vValue <- as.numeric(vRow[[vVariable]])
-    
-    df_GrStrVar <- df_GrStr[which(df_GrStr$variableName == vVariable),
-                            c("variableValue","prob0")]
+    df_GrStrVar <- df_gr[which(df_gr$variableName == vVariable),]
     
     if (is.factor(vVariable)) {
       index <- which(df_GrStrVar$variableFactor == vValue)
@@ -779,23 +727,34 @@ get_prob0 <- function(vRow,vVariables,df_groups) {
     }
     
     if (length(index) != 0) {
-      
-    prob0 <- df_GrStrVar[index,"prob0"]
     df_prob0 <- dplyr::bind_rows(list(df_prob0, data.frame(variableName = vVariable,
-                                                           prob0 = prob0)))
+                                                           prob0  = df_GrStrVar[index,"prob0"],
+                                                           weight  = df_GrStrVar[index,"weight"])))
     }
-    
-    
   }
-  mean(df_prob0$prob0)
+  
+  vTotalWeight <- sum(df_prob0$weight, na.rm = T)
+  
+  df_prob0$prob0w <- df_prob0$weight/vTotalWeight*df_prob0$prob0
+  vTotalProb <- sum(df_prob0$prob0w, na.rm = T)
+
+  
+  vTotalProb
 }
 
-df_dailyTS[,"prob0"] <- apply(df_dailyTS, 1, FUN = function(x) get_prob0(x,vVariables,df_groups))  
+df_dailyTS[,"prob0"] <- apply(df_dailyTS[,],1,FUN = function(x) get_prob0(x,vVariables,df_groups))
+```
+
+```{r}
+df_dailyTS %>%
+  ggplot() +
+  geom_point(aes(x = prob0, y = profitTS), color = "chocolate") 
 ```
 
 
 ## Checking result
 
+### PLot
 ```{r}
 branch <- paste0("./plots/eda/prob0/")
 if (!file.exists(branch)) {
@@ -809,7 +768,6 @@ for (vStrategy in vStrategies) {
 }
 }
 
-branch <- "./plots/eda/meanProfit_by_year/"
 vYears <- unique(df_dailyTS$year)
 
 for (vStrategy in vStrategies) {
@@ -830,28 +788,158 @@ opendir(branch)
 
 ```
 
-
-
+### Table
 ```{r, warning=F, message=F}
-df_dailyTS <- df_dailyTS %>%
-  mutate(prob0 = (prob0_wday + prob0_month + prob0_SDPRF+prob0_RealProbTS)/4)
+vProb0s <- seq(from = 0.01, to = 1, by = 0.01)
+df_Prob0Profits <- data.frame(strategy = character(),
+                             prob0 = double(),
+                             profitMean = double(), 
+                             profitTSMean = double(),
+                             n = integer(),
+                             bootstrap = integer())
 
-prob0Level <- 0.20
-df_profitM <- df_dailyTS %>%
-  filter(prob0 < prob0Level) %>%
-  group_by(year) %>%
-  summarise(profitM = mean(profit), nM = n())
 
-df_profitT <- df_dailyTS %>%
-  group_by(year) %>%
-  summarise(profitT = mean(profit), nT = n())
 
-df_profit <- merge(df_profitM,df_profitT,by = "year", all = TRUE)
+for (vProb0 in vProb0s) {
+  
+  for (boot in 1:10) {
+  df_index <- df_dailyTS %>%
+    group_by(strategy) %>%
+    summarise(start = min(index),stop = max(index),strategy = strategy[1]) %>%
+    group_by(strategy) %>%
+    summarise(index = sample(start:stop, stop-start, replace = T))
+  vIndex <- intersect(which(df_dailyTS$prob0 <= vProb0),df_index$index)
+  
+  if (length(vIndex) == 0) next
+  
+  df_Prob0Profit <- df_dailyTS[vIndex,] %>%
+    group_by(strategy) %>%
+    summarise(strategy = as.character(strategy[1]), 
+              prob0 = vProb0,
+              profitMean = mean(profit), 
+              profitTSMean = mean(profitTS),
+              n = n(),
+              bootstrap = boot)
+  
+  df_Prob0Profits <- dplyr::bind_rows(list(df_Prob0Profits,df_Prob0Profit))
+  }
+  }
 
-df_profit <- df_profit %>%
-  mutate(freq = round(nM/nT,2),
-         dif = profitM/profitT) 
-
-summary(df_profit)
+df_Prob0Profits$strategy <- as.factor(df_Prob0Profits$strategy)
+df_Prob0Profits <- df_Prob0Profits %>%
+  group_by(strategy,bootstrap) %>%
+  mutate(freq = n/max(n),
+         totalProfit = n*profitMean)
 ```
+
+```{r}
+head(df_Prob0Profits)
+```
+
+
+```{r}
+df_Prob0 <- df_Prob0Profits %>%
+  group_by(prob0) %>%
+  summarise(prob0 = prob0[1],
+            profitMean = mean(profitMean),
+            totalProfit = mean(totalProfit),
+            freq = mean(freq))
+```
+
+```{r}
+vProb0 <- df_Prob0[which.max(df_Prob0$totalProfit),"prob0"][[1]]
+```
+
+```{r}
+df_profit <- df_dailyTS %>%
+  mutate(profitProb0 = if_else(prob0 <= vProb0, profit, 0)) %>%
+  group_by(strategy, year, month) %>%
+  summarise(profit = sum(profit),
+            profitProb0 = sum(profitProb0))
+
+df_profit %>%
+  group_by(year) %>%
+  summarise(profit = sum(profit),
+            profitProb0 = sum(profitProb0))
+```
+
+
+```{r}
+branch <- paste0("./plots/eda/prob0cum/")
+if (!file.exists(branch)) {
+                dir.create(branch)
+}
+
+for (vStrategy in vStrategies) {
+  
+  sGGplot <- df_Prob0Profits %>%
+    filter(strategy == vStrategy) %>%
+    ggplot() +
+    geom_point(aes(x = prob0, y = profitMean, color = as.factor(bootstrap) )) +
+    ggtitle(paste0("Mean profit for ",vStrategy))
+  saveGGplot(sGGplot,branch,paste0("MeanProfit_",vStrategy))
+  
+  sGGplot <- df_Prob0Profits %>%
+    filter(strategy == vStrategy) %>%
+    ggplot() +
+    geom_point(aes(x = prob0, y = totalProfit, color = as.factor(bootstrap))) +
+    ggtitle(paste0("Total profit for ",vStrategy))
+  
+  saveGGplot(sGGplot,branch,paste0("TotalProfit_",vStrategy))
+
+}
+opendir(branch)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
