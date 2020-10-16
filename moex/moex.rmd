@@ -46,7 +46,7 @@ df_strategy <- read.csv("./data/strategy/strategy.csv",
 vYears <- c("2008", "2009", "2010", "2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018")
 
 df_daily <- df_strategy %>%
-  filter(year %in% vYears[1:12]) %>%
+#  filter(year %in% vYears[1:12]) %>%
   filter(strategy == "RTS_18_22")
 df_daily$index <- row.names(df_daily)
 df_daily$strategy <- as.factor(as.character(df_daily$strategy))
@@ -555,6 +555,7 @@ for (vVariable in vVariables) {
   df_dailyTS <- create_grouping_variable(df_dailyTS = df_dailyTS)
   
   # create bootstrap df
+  l_dailyTS <- list()
   for (boot in 1:nBoot) {
     l_dailyTS[[boot]] <- df_dailyTS[l_indexes[[boot]],]
   }
@@ -612,71 +613,8 @@ df_groups %>%
 ```
 
 ```{r}
-head(df_groups)
-```
-
-
-```{r}
 df_dailyTS[sapply(df_dailyTS, is.infinite)] <- NA
 ```
-
-
-```{r}
-vColumns <- c("variableName", "group", "prob0", "variableValue", "weight")
-df_groups$group <- as.numeric(df_groups$group)
-
-# get matrix for groups
-df_groupsW <- reshape(data.frame(df_groups[,vColumns]),
-                      idvar = "group",
-                      v.names = c("prob0", "variableValue", "weight"),
-                      timevar = "variableName",
-                      direction = "wide")
-m_groupsW <- as.matrix(df_groupsW)
-vNRow <- nrow(m_groupsW)
-
-# prepare matrix from row from df_dayly
-m_RowDaily <- as.matrix(as.numeric(df_dailyTS[1368,vVariables]))
-m_RowDaily <- matrix(rep(m_RowDaily,each=vNRow),nrow=vNRow)
-
-# create abs diff
-m_min <- abs(m_groupsW[,paste0("variableValue.",vVariables)] - m_RowDaily)
-
-# find index of abs diff
-minindex <- apply(m_min, 2, which.min)
-
-
-m_prob0 <- m_groupsW[,paste0("prob0.",vVariables)]
-m_weight <- m_groupsW[,paste0("weight.",vVariables)]
-
-vNCol <- ncol(m_prob0)
-dim(m_prob0) <- c(vNRow*vNCol,1)
-dim(m_weight) <- c(vNRow*vNCol,1)
-minindex_in_row <- minindex + vNRow*(0:(vNCol-1))
-
-vProb0  <- m_prob0[minindex_in_row,1]
-vWeight <- m_weight[minindex_in_row,1]
-vWeight <- vWeight/sum(vWeight)
-
-vProb0w <- sum(vProb0*vWeight)
-```
-
-
-
-```{r}
-which(m_min == min(m_min, na.rm = T), arr.ind=TRUE)
-which(m_min == minindex, arr.ind=TRUE)
-```
-
-```{r}
-m_min[16,310]
-```
-
-
-
-```{r}
-head(df_groupsW)
-```
-
 
 ## Ploting
 
@@ -710,39 +648,79 @@ for (vStrategy in vStrategies) {
 ## Full table
 
 ```{r}
-get_prob0 <- function(vRow,vVariables,df_gr) {
-  
-  df_prob0 <- data.frame(variableName = character(),
-                         prob0 = double(),
-                         weight = double())
-  
-  for (vVariable in vVariables) {
-    vValue <- as.numeric(vRow[[vVariable]])
-    df_GrStrVar <- df_gr[which(df_gr$variableName == vVariable),]
-    
-    if (is.factor(vVariable)) {
-      index <- which(df_GrStrVar$variableFactor == vValue)
-    } else {
-      index <- which.min(abs(df_GrStrVar$variableValue-vValue))
-    }
-    
-    if (length(index) != 0) {
-    df_prob0 <- dplyr::bind_rows(list(df_prob0, data.frame(variableName = vVariable,
-                                                           prob0  = df_GrStrVar[index,"prob0"],
-                                                           weight  = df_GrStrVar[index,"weight"])))
-    }
-  }
-  
-  vTotalWeight <- sum(df_prob0$weight, na.rm = T)
-  
-  df_prob0$prob0w <- df_prob0$weight/vTotalWeight*df_prob0$prob0
-  vTotalProb <- sum(df_prob0$prob0w, na.rm = T)
+vColumns <- c("variableName", "group", "prob0", "variableValue", "weight")
+df_groups$group <- as.numeric(df_groups$group)
 
-  
-  vTotalProb
+# get matrix for groups
+df_groupsW <- reshape(data.frame(df_groups[,vColumns]),
+                      idvar = "group",
+                      v.names = c("prob0", "variableValue", "weight"),
+                      timevar = "variableName",
+                      direction = "wide")
+m_groupsW <- as.matrix(df_groupsW)
+
+m_variableValue <- m_groupsW[,paste0("variableValue.",vVariables)]
+m_prob0 <-  m_groupsW[,paste0("prob0.",vVariables)]
+m_weight <- m_groupsW[,paste0("weight.",vVariables)]
+vNRow <- nrow(m_groupsW)
+```
+
+```{r}
+get_prob0m <- function(vRow,vVariables,m_groupsW,m_variableValue,m_prob0,m_weight,vNRow) {
+# prepare matrix from row from df_dayly
+m_RowDaily <- as.matrix(as.numeric(vRow[vVariables]))
+m_RowDaily <- matrix(rep(m_RowDaily,each=vNRow),nrow=vNRow)
+
+# create abs diff
+m_minVariableValue <- abs(m_variableValue - m_RowDaily)
+
+# find index of abs diff
+minindex <- apply(m_minVariableValue, 2, which.min)
+if (is.list(minindex) == T) {
+  minindex <- unlist(minindex)
+  vColNamesM <- names(minindex)
+  vColNamesM <- gsub("[0-9]+$","",vColNamesM)
+  vColNamesM <- gsub("[.]$","",vColNamesM)
+  m_prob0 <-  m_groupsW[,gsub("variableValue","prob0",vColNamesM)]
+  m_weight <- m_groupsW[,gsub("variableValue","weight",vColNamesM)]
 }
 
-df_dailyTS[,"prob0"] <- apply(df_dailyTS[,],1,FUN = function(x) get_prob0(x,vVariables,df_groups))
+vNCol <- ncol(m_prob0)
+dim(m_prob0) <- c(vNRow*vNCol,1)
+dim(m_weight) <- c(vNRow*vNCol,1)
+
+
+
+minindex[which(is.na(minindex))] <- 0 #temp
+minindex_in_row <- minindex + vNRow*(0:(vNCol-1))
+
+vProb0  <- m_prob0[minindex_in_row,1]
+vWeight <- m_weight[minindex_in_row,1]
+vWeight <- vWeight/sum(vWeight)
+
+vProb0w <- sum(vProb0*vWeight)
+
+vProb0w
+}
+```
+
+
+```{r}
+gsub("[0-9]+$","","variableValue10.entryprice_predSD.19")
+```
+
+```{r}
+Rprof()
+df_dailyTS[,"prob0"] <- apply(df_dailyTS,1,FUN = function(x) get_prob0m(x,
+                                                                        vVariables,
+                                                                        m_groupsW,
+                                                                        m_variableValue,
+                                                                        m_prob0,
+                                                                        m_weight,
+                                                                        vNRow))
+Rprof(NULL)
+s <- summaryRprof()
+s
 ```
 
 ```{r}
@@ -855,7 +833,8 @@ df_profit <- df_dailyTS %>%
   mutate(profitProb0 = if_else(prob0 <= vProb0, profit, 0)) %>%
   group_by(strategy, year, month) %>%
   summarise(profit = sum(profit),
-            profitProb0 = sum(profitProb0))
+            profitProb0 = sum(profitProb0),
+            Prob0 = vProb0)
 
 df_profit %>%
   group_by(year) %>%
@@ -891,27 +870,251 @@ for (vStrategy in vStrategies) {
 opendir(branch)
 ```
 
+# Combine strategy
+
+## Read prob0Gr
+
+```{r}
+# Read csv
+vStrategiesFGr <- c()
+l_StrategiesFGr <- list()
+vPath <- "./data/output/"
+vFiles <- list.files(vPath, pattern = ".csv"); vFiles <- grep("Int", vFiles, value = T)
+vFiles <- vFiles[-grep("daily", vFiles)]
+
+for(vFile in vFiles) {
+        vDfName <- gsub("profit_","",vFile)
+        vStrategiesFGr[length(vStrategiesFGr)+1] <- vDfName
+        l_StrategiesFGr[[vDfName]] <- read.csv(paste0(vPath,vFile))
+}
+df_StrategiesFGr <- dplyr::bind_rows(l_StrategiesFGr)
+```
+
+```{r}
+df_StrategiesFGr %>%
+  group_by(year) %>%
+  summarise(profit = mean(profit),
+            profitProb0 = mean(profitProb0, na.rm = T),
+            diff = (profitProb0-profit))
+```
+
+## Stat diff
+
+```{r}
+library(BayesFactor)
+source("./scripts/bayes/bayes_inference.R")
+source("./scripts/bayes/bayes_util.R")
+source("./scripts/bayes/bayes_single_mean_JZS.R")
+source("./scripts/bayes/bayes_two_mean.R")
+```
+
+```{r}
+str(df_StrategiesFGr)
+```
+
+```{r}
+df_StrategiesFGr <- df_StrategiesFGr %>%
+  mutate(diff = (profitProb0-profit),
+         forecast = if_else(year > 2018, T, F))
+```
+
+
+```{r}
+vIndex <- which((df_StrategiesFGr$year < 2019) | (df_StrategiesFGr$year == 2019 & df_StrategiesFGr$month < 2))
+bayes_inference(y = diff, x = forecast, data = df_StrategiesFGr[vIndex,], 
+                statistic = "mean", 
+                type = "ci", alternative = "twosided", null = 0, 
+                prior = "JZS", rscale = 1, 
+                method = "theoretical", show_plot = T)
+```
+
+```{r}
+bayes_inference(y = profit, data = df_StrategiesFGr, 
+                statistic = "mean", 
+                type = "ci", alternative = "twosided", null = 0, 
+                prior = "JZS", rscale = 1, 
+                method = "theoretical", show_plot = T)
+```
 
 
 
+## Read df_daily
+
+```{r}
+# Read csv
+vStrategiesF <- c()
+l_StrategiesF <- list()
+vPath <- "./data/output/"
+vFiles <- list.files(vPath, pattern = ".csv")
+vFiles <- grep("Int", vFiles, value = T)
+vFiles <- grep("daily", vFiles, value = T)
+
+for(vFile in vFiles) {
+        vDfName <- gsub("profit_daily_","",vFile)
+        vStrategiesF[length(vStrategiesF)+1] <- vDfName
+        l_StrategiesF[[vDfName]] <- read.csv(paste0(vPath,vFile))
+}
+
+vNColToSelect <- c("date","strategy","profit","tradestop","prob0","year","month","wday")
+for (vStrategyF in vStrategiesF) {
+        l_StrategiesF[[vStrategyF]] <- l_StrategiesF[[vStrategyF]][,vNColToSelect]
+}
+
+df_StrategiesF <- dplyr::bind_rows(l_StrategiesF)
+df_StrategiesF$date <- as.POSIXct(df_StrategiesF$date)
+
+df_StrategiesF$start <- unlist(strsplit(as.character(df_StrategiesF$strategy),"_"))[(as.numeric(row.names(df_StrategiesF))-1)*4+as.numeric(row.names(df_StrategiesF))+1]
+df_StrategiesF$start <- as.factor(df_StrategiesF$start)
+```
+
+# Grouping
+
+```{r, warning=F, message=F}
+vStrategies <- unique(df_StrategiesF$strategy)
+df_profits <- data.frame(strategy = character(),
+                         year = integer(),
+                         month = integer(),
+                         prob0 = double(),
+                         profit = double(),
+                         profitProb0 = double())
+
+vProb0s <- seq(from = 0.01, to = 1, by = 0.01)
+
+for (vStrategy in vStrategies) {
+  df_dailyTS <- df_StrategiesF %>%
+    filter(strategy == vStrategy)
+  df_dailyTS$index <- as.numeric(row.names(df_dailyTS))
+  vLength <- nrow(df_dailyTS)
+  
+  df_Prob0Profits <- data.frame(strategy = character(),
+                                prob0 = double(),
+                                profitMean = double(), 
+                                n = integer(),
+                                bootstrap = integer())
+
+for (vProb0 in vProb0s) {
+  
+  for (boot in 1:10) {
+  df_index <- df_dailyTS %>%
+    summarise(index = sample(index, vLength, replace = T))
+  vIndex <- intersect(which(df_dailyTS$prob0 <= vProb0),df_index$index)
+  
+  if (length(vIndex) == 0) next
+  
+  df_Prob0Profit <- df_dailyTS[vIndex,] %>%
+    summarise(strategy = as.character(strategy[1]), 
+              prob0 = vProb0,
+              profitMean = mean(profit),
+              n = n(),
+              bootstrap = boot)
+  
+  df_Prob0Profits <- dplyr::bind_rows(list(df_Prob0Profits,df_Prob0Profit))
+  }
+  }
+
+df_Prob0Profits$strategy <- as.factor(df_Prob0Profits$strategy)
+df_Prob0Profits <- df_Prob0Profits %>%
+  group_by(strategy,bootstrap) %>%
+  mutate(freq = n/max(n),
+         totalProfit = n*profitMean)
+
+df_Prob0 <- df_Prob0Profits %>%
+  group_by(prob0) %>%
+  summarise(prob0 = prob0[1],
+            profitMean = mean(profitMean),
+            totalProfit = mean(totalProfit),
+            freq = mean(freq))
+
+vProb0 <- df_Prob0[which.max(df_Prob0$totalProfit),"prob0"][[1]]
+
+df_profit <- df_dailyTS %>%
+  mutate(profitProb0 = if_else(prob0 <= vProb0, profit, 0)) %>%
+  group_by(strategy, year, month) %>%
+  summarise(profit = sum(profit),
+            profitProb0 = sum(profitProb0),
+            prob0 = vProb0)
+
+df_profits <- dplyr::bind_rows(list(df_profits,df_profit))
+
+print(vStrategy)
+}
+```
+
+
+```{r}
+df_profitsGr <- df_profits %>%
+  group_by(strategy) %>%
+  summarise(bestProb0 = prob0[1],
+            profitSD = sd(profit, na.rm = T),
+            profit = mean(profit, na.rm = T),
+            profitProb0SD = sd(profitProb0, na.rm = T),
+            meanProfitByProb0 = mean(profitProb0, na.rm = T),
+            diff = meanProfitByProb0 / profit)
+```
+
+
+```{r}
+df_StrategiesFM <- merge(df_StrategiesF,df_profitsGr[,c("strategy", "bestProb0", "meanProfitByProb0")],by = "strategy", all.x = TRUE)
+head(df_StrategiesFM)
+```
+
+```{r}
+df_StrategiesFM <- df_StrategiesFM %>%
+  mutate(tradeAllowed = if_else(prob0 <= bestProb0, T, F)) %>%
+  mutate(profitTA = if_else(tradeAllowed == T, profit, 0)) %>%
+  mutate(meanProfitByProb0TA = if_else(tradeAllowed == T, meanProfitByProb0, 0))
+head(df_StrategiesFM)
+```
 
 
 
+```{r}
+df_StrategiesFMR <- df_StrategiesFM %>%
+  group_by(start, date) %>%
+  mutate(sumMeanProfitByProb0TA = sum(meanProfitByProb0TA, na.rm = T)) %>%
+  mutate(freq = (meanProfitByProb0TA)/(sumMeanProfitByProb0TA)) %>%
+  mutate(freq = if_else(sumMeanProfitByProb0TA == 0, 0, freq)) %>%
+  mutate(profitM = profit*freq) %>%
+  group_by(start, year, month) %>%
+  summarise(profitM = sum(profitM, na.rm = T),
+            profit = mean(profit, na.rm = T))
 
+df_StrategiesFMR %>%
+  group_by(start, year) %>%
+  summarise(profitM = sum(profitM),
+            profit = sum(profit)*20)
+```
 
+```{r}
+df_StrategiesFM %>%
+  group_by(strategy) %>%
+  mutate(profitTA = if_else(tradeAllowed == T, profit, 0),
+         nTA = if_else(tradeAllowed == T, 1, 0)) %>%
+  summarise(profit = sum(profit, na.rm = T),
+            profitTA = sum(profitTA, na.rm = T),
+            n = n(),
+            nTA = sum(tradeAllowed))
+```
 
-
-
-
-
-
-
-
-
-
-
-
-
+```{r}
+df_StrategiesFM %>%
+  group_by(start, date, tradeAllowed) %>%
+  summarise(profitM = sum(profit.x*profitProb0/sum(profitProb0, na.rm = T), na.rm = T),
+            profit = sum(profit.x, na.rm = T),
+            n = n(),
+            month = month[1],
+            year = year[1]) %>%
+  mutate(profitM = if_else(tradeAllowed == T, profitM, 0)) %>%
+  group_by(start, date) %>%
+  arrange(start, date) %>%
+  summarise(profitM = sum(profitM, na.rm = T),
+            profit = sum(profit, na.rm = T)/sum(n, na.rm = T),
+            month = month[1],
+            year = year[1]) %>%
+  group_by(start) %>%
+  summarise(profitM = sum(profitM),
+            profit = sum(profit))
+```
 
 
 
