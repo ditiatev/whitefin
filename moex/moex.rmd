@@ -22,6 +22,7 @@ library(GGally)
 
 source("./scripts/saveGGplot.r")
 source("./scripts/opendir.r")
+source("./scripts/makePrColForStrategy.r")
 ```
 
 # Data
@@ -37,20 +38,20 @@ source("./scripts/opendir.r")
 df_strategy <- read.csv("./data/strategy/strategy.csv",
                         colClasses = c("factor","POSIXct","numeric","integer", "factor",
                                        rep("numeric",6),rep("factor",3)))
-# str(df_strategy)
+unique(df_strategy$strategy)
 ```
 
 
 ## Work set
 ```{r}
-vYears <- c("2008", "2009", "2010", "2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018")
-
 df_daily <- df_strategy %>%
-#  filter(year %in% vYears[1:12]) %>%
-  filter(strategy == "RTS_18_22")
+  filter(strategy == "RTS_14_18")
 df_daily$index <- row.names(df_daily)
 df_daily$strategy <- as.factor(as.character(df_daily$strategy))
 
+
+vYearsFull <- unique(df_daily$year)
+vYears <- vYearsFull[1:8]
 vStrategies <- unique(df_daily$strategy)
 ```
 
@@ -119,13 +120,10 @@ df_daily <- merge(df_daily, df_index_moexRTS, by.x = "date", by.y = "tradedate",
 Создадим таблицу с данными по количеству стоптрейдов за предыдущие N дней.
 ```{r}
 sliding_depth <- 30
-source("./scripts/makePrColForStrategy.r")
 df_daily <- makePrColForStrategy(df_strategy = df_daily,
                                  vColNames = "tradestop",
                                  sliding_depth = sliding_depth)
-```
 
-```{r}
 for (n in 2:sliding_depth) {
   df_daily[,paste0("tradestop_MA",n)] <- apply(df_daily[,paste0("tradestop_Pr",1:n)],1,sum,na.rm = F)
 }
@@ -194,9 +192,7 @@ df_tsprob <- data.frame(mean_probTS = numeric(),
 
 # botstraping for each prob level
 
-vStratedies <- unique(df_daily$strategy)
-
-for (strategy in vStratedies) {
+for (strategy in vStrategies) {
   for (prob in 1:100) {
     prob_index <- which(df_daily$probTS >= prob / 100 & df_daily$strategy == strategy)
     
@@ -460,12 +456,6 @@ for (vStrategy in vStrategies) {
 
 ## Grouping
 
-```{r}
-vVariables_row <- names(df_dailyTS)[c(13,14,16:376)]
-vVariables <- grep(("_low|_hight|_pred"), vVariables_row, value = T)
-vVariables <- c(vVariables,c("probTS","RealProbTS","month","wday"))
-```
-
 ```{r, message=F, warning=F}
 make_groups <- function(df_dailyTS, vVariables, nBoot = 8) {
   
@@ -503,7 +493,8 @@ make_groups <- function(df_dailyTS, vVariables, nBoot = 8) {
                   n = n())
       }
 
-        df_group$group <- row.names(df_group)
+        df_group$group <- as.character(df_group$sumVariable)
+        #df_group$year <- as.character(df_group$year)
         df_group <- df_group[ , !(names(df_group) == "sumVariable")]
 
                 df_group
@@ -521,7 +512,7 @@ make_groups <- function(df_dailyTS, vVariables, nBoot = 8) {
                  sumVariable = cut(gr_index,
                                    breaks = seq(from = 1,
                                                 to = max(n()),
-                                                length.out = ceiling((max(n())/100)+1))))
+                                                length.out = ceiling((max(n())/200)+1))))
       
     } else {
       df_dailyTS$sumVariable <- df_dailyTS[,"variable"]
@@ -529,7 +520,7 @@ make_groups <- function(df_dailyTS, vVariables, nBoot = 8) {
     df_dailyTS
     }
 
-  df_groups <- data.frame(
+  df_groups <- data.frame(# year = character(),
                           variableName = character(),
                           variableFactor = character(),
                           variableValue = double(),
@@ -577,24 +568,51 @@ df_groups
 #s
 ```
 
+### Stability for variable
+
+```{r}
+vVariables_row <- names(df_dailyTS)[c(13,14,16:376)] #376
+vVariables <- grep(("_low|_hight|_pred"), vVariables_row, value = T)
+vVariables <- c(vVariables,c("probTS","RealProbTS","month","wday"))
+```
 
 ```{r, message=F, warning=F}
 df_groups <- make_groups(df_dailyTS = df_dailyTS, vVariables = vVariables, nBoot = 10)
+df_groups$group <- as.numeric(as.factor(df_groups$group))
+
 # calculate prob0
 df_groups <- df_groups %>%
-  filter(n != 1) %>%
+  filter(n > 2) %>%
   mutate(profitSE = ProfitSD/sqrt(n),
-         t0 = 0 - profitMean/profitSE,
+         t0 = if_else(ProfitSD == 0, NaN ,(0 - profitMean/profitSE)),
          prob0 = round(pt(t0, (n-1)),4))
-```
+
+df_groups <- df_groups %>%
+  filter(!is.nan(prob0)) %>%
+  group_by(group,variableName) %>%
+  mutate(grProb0 = mean(prob0)) %>%
+  group_by(group,variableName) %>%
+  mutate(sd_grProb0 = sd(grProb0),
+         n_gr = length(unique(year)),
+         se_grProb0 = sd_grProb0/sqrt(n_gr))
+
+df_groups <- df_groups %>%
+  group_by(variableName, group, se_grProb0) %>%
+  summarise(variableValue = mean(variableValue),
+            variableFactor = variableFactor[1],
+            sdProb0 = sd(prob0),
+            n = n(),
+            seProb0 = sdProb0/sqrt(n),
+            prob0 = mean(prob0)) %>%
+  group_by(variableName, group) %>%
+  mutate(variableFactor = variableFactor[1],
+         seProb0 = if_else(seProb0 < 0.01, 0.01, seProb0),
+         weight = 1/((6*seProb0)^2),
+         se_grProb0 = if_else(se_grProb0 < 0.01, 0.01, se_grProb0),
+         gr_weight = 30/((6*se_grProb0)))# %>%
+  #mutate(weight = weight + gr_weight)
 
 
-```{r}
-#write.csv(x=df_groups, file="./data/df_groups.csv", row.names = F)
-```
-
-### Stability for variable
-```{r}
 df_groups <- df_groups %>%
   group_by(variableName, group) %>%
   summarise(variableValue = mean(variableValue),
@@ -605,11 +623,17 @@ df_groups <- df_groups %>%
             prob0 = mean(prob0)) %>%
   mutate(seProb0 = if_else(seProb0 < 0.01, 0.01, seProb0),
          weight = 1/((6*seProb0)^2))
-
 df_groups %>%
   group_by(variableName) %>%
   summarise(weight = median(weight), sd = median(sdProb0), se = median(seProb0)) %>%
   arrange(desc(weight))
+
+```
+
+
+
+```{r}
+#write.csv(x=df_groups, file="./data/df_groups.csv", row.names = F)
 ```
 
 ```{r}
@@ -620,7 +644,7 @@ df_dailyTS[sapply(df_dailyTS, is.infinite)] <- NA
 
 ## prob0
 
-```{r, message=FALSE}
+```{r eval=FALSE, message=FALSE, include=FALSE}
 branch <- paste0("./plots/eda/prob0_for_variable/")
 if (!file.exists(branch)) {
                 dir.create(branch)
@@ -665,6 +689,7 @@ m_weight <- m_groupsW[,paste0("weight.",vVariables)]
 vNRow <- nrow(m_groupsW)
 ```
 
+
 ```{r}
 get_prob0m <- function(vRow,vVariables,m_groupsW,m_variableValue,m_prob0,m_weight,vNRow) {
 # prepare matrix from row from df_dayly
@@ -706,12 +731,8 @@ vProb0w
 
 
 ```{r}
-gsub("[0-9]+$","","variableValue10.entryprice_predSD.19")
-```
-
-```{r}
 Rprof()
-df_dailyTS[,"prob0"] <- apply(df_dailyTS,1,FUN = function(x) get_prob0m(x,
+df_daily[,"prob0"] <- apply(df_daily,1,FUN = function(x) get_prob0m(x,
                                                                         vVariables,
                                                                         m_groupsW,
                                                                         m_variableValue,
@@ -724,9 +745,9 @@ s
 ```
 
 ```{r}
-df_dailyTS %>%
+df_daily %>%
   ggplot() +
-  geom_point(aes(x = prob0, y = profitTS), color = "chocolate") 
+  geom_point(aes(x = prob0, y = profit), color = "chocolate") 
 ```
 
 
@@ -746,90 +767,82 @@ for (vStrategy in vStrategies) {
 }
 }
 
-vYears <- unique(df_dailyTS$year)
+vYears <- unique(df_daily$year)
 
 for (vStrategy in vStrategies) {
   branch <- paste0("./plots/eda/prob0/",vStrategy,"/")
   for (vYear in vYears) {
   
-  sGGplot <- df_dailyTS %>%
+  sGGplot <- df_daily %>%
     filter(strategy == vStrategy) %>%
     filter(year == vYear) %>%
     ggplot() +
-    geom_point(aes(x = prob0, y = profitTS)) +
+    geom_point(aes(x = prob0, y = profit)) +
     ggtitle(paste0(vStrategy," in ",vYear))
   
   saveGGplot(sGGplot,branch,vYear)
   }
 }
 opendir(branch)
-
 ```
 
 ### Table
 ```{r, warning=F, message=F}
 vProb0s <- seq(from = 0.01, to = 1, by = 0.01)
 df_Prob0Profits <- data.frame(strategy = character(),
-                             prob0 = double(),
-                             profitMean = double(), 
-                             profitTSMean = double(),
-                             n = integer(),
-                             bootstrap = integer())
+                              prob0 = double(),
+                              profitMean = double(), 
+                              profitTSMean = double(),
+                              n = integer(),
+                              bootstrap = integer())
 
-
-
+vYears <- unique(df_daily$year)[1:5]
+        
+df_daily$index <- 1:nrow(df_daily)
 for (vProb0 in vProb0s) {
-  
+  # bootstraping
   for (boot in 1:10) {
-  df_index <- df_dailyTS %>%
-    group_by(strategy) %>%
-    summarise(start = min(index),stop = max(index),strategy = strategy[1]) %>%
-    group_by(strategy) %>%
-    summarise(index = sample(start:stop, stop-start, replace = T))
-  vIndex <- intersect(which(df_dailyTS$prob0 <= vProb0),df_index$index)
-  
-  if (length(vIndex) == 0) next
-  
-  df_Prob0Profit <- df_dailyTS[vIndex,] %>%
-    group_by(strategy) %>%
-    summarise(strategy = as.character(strategy[1]), 
-              prob0 = vProb0,
-              profitMean = mean(profit), 
-              profitTSMean = mean(profitTS),
-              n = n(),
-              bootstrap = boot)
-  
-  df_Prob0Profits <- dplyr::bind_rows(list(df_Prob0Profits,df_Prob0Profit))
+    df_index <- df_daily %>%
+      filter(year %in% vYears) %>%
+      group_by(strategy) %>%
+      summarise(start = min(index),stop = max(index),strategy = strategy[1]) %>%
+      group_by(strategy) %>%
+      summarise(index = sample(start:stop, stop-start, replace = T))
+    vIndex <- intersect(which(df_daily$prob0 <= vProb0),df_index$index)
+    
+    if (length(vIndex) == 0) next
+    df_Prob0Profit <- df_daily[vIndex,] %>%
+      group_by(strategy) %>%
+      summarise(strategy = as.character(strategy[1]), 
+                prob0 = vProb0,
+                profitMean = mean(profit),
+                n = n(),
+                bootstrap = boot)
+    
+    #df_Prob0Profit$year <- as.character(df_Prob0Profit$year)
+    df_Prob0Profits <- dplyr::bind_rows(list(df_Prob0Profits,df_Prob0Profit))
   }
-  }
+}
 
 df_Prob0Profits$strategy <- as.factor(df_Prob0Profits$strategy)
+#df_Prob0Profits$year <- as.factor(df_Prob0Profits$year)
+
 df_Prob0Profits <- df_Prob0Profits %>%
   group_by(strategy,bootstrap) %>%
   mutate(freq = n/max(n),
          totalProfit = n*profitMean)
-```
 
-```{r}
-head(df_Prob0Profits)
-```
-
-
-```{r}
 df_Prob0 <- df_Prob0Profits %>%
   group_by(prob0) %>%
   summarise(prob0 = prob0[1],
             profitMean = mean(profitMean),
             totalProfit = mean(totalProfit),
             freq = mean(freq))
-```
 
-```{r}
 vProb0 <- df_Prob0[which.max(df_Prob0$totalProfit),"prob0"][[1]]
-```
+#vProb0 <- 0.4
 
-```{r}
-df_profit <- df_dailyTS %>%
+df_profit <- df_daily %>%
   mutate(profitProb0 = if_else(prob0 <= vProb0, profit, 0)) %>%
   group_by(strategy, year, month) %>%
   summarise(profit = sum(profit),
@@ -839,8 +852,50 @@ df_profit <- df_dailyTS %>%
 df_profit %>%
   group_by(year) %>%
   summarise(profit = sum(profit),
-            profitProb0 = sum(profitProb0))
+            profitProb0 = sum(profitProb0),
+            vProb0)
 ```
+
+```{r}
+library(BayesFactor)
+source("./scripts/bayes/bayes_inference.R")
+source("./scripts/bayes/bayes_util.R")
+source("./scripts/bayes/bayes_single_mean_JZS.R")
+source("./scripts/bayes/bayes_two_mean.R")
+```
+
+
+```{r}
+df_profit$year <- as.numeric(as.character(df_profit$year))
+df_profit <- df_profit %>%
+  mutate(diff = (profitProb0-profit),
+         forecast = if_else(year > 2014, T, F))
+df_profit
+```
+
+```{r}
+bayes_inference(y = diff, x = forecast, data = df_profit, 
+                statistic = "mean", 
+                type = "ci", alternative = "twosided", null = 0, 
+                prior = "JZS", rscale = 1, 
+                method = "theoretical", show_plot = T)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 ```{r}
@@ -915,13 +970,12 @@ str(df_StrategiesFGr)
 ```{r}
 df_StrategiesFGr <- df_StrategiesFGr %>%
   mutate(diff = (profitProb0-profit),
-         forecast = if_else(year > 2018, T, F))
+         forecast = if_else(year > 2015, T, F))
 ```
 
 
 ```{r}
-vIndex <- which((df_StrategiesFGr$year < 2019) | (df_StrategiesFGr$year == 2019 & df_StrategiesFGr$month < 2))
-bayes_inference(y = diff, x = forecast, data = df_StrategiesFGr[vIndex,], 
+bayes_inference(y = diff, x = forecast, data = df_StrategiesFGr, 
                 statistic = "mean", 
                 type = "ci", alternative = "twosided", null = 0, 
                 prior = "JZS", rscale = 1, 
@@ -929,7 +983,8 @@ bayes_inference(y = diff, x = forecast, data = df_StrategiesFGr[vIndex,],
 ```
 
 ```{r}
-bayes_inference(y = profit, data = df_StrategiesFGr, 
+vIndex <- which(df_StrategiesFGr$year <= 2015)
+bayes_inference(y = diff, data = df_StrategiesFGr[vIndex,], 
                 statistic = "mean", 
                 type = "ci", alternative = "twosided", null = 0, 
                 prior = "JZS", rscale = 1, 
