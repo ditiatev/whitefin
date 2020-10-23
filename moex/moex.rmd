@@ -23,6 +23,12 @@ library(GGally)
 source("./scripts/saveGGplot.r")
 source("./scripts/opendir.r")
 source("./scripts/makePrColForStrategy.r")
+
+library(BayesFactor)
+source("./scripts/bayes/bayes_inference.R")
+source("./scripts/bayes/bayes_util.R")
+source("./scripts/bayes/bayes_single_mean_JZS.R")
+source("./scripts/bayes/bayes_two_mean.R")
 ```
 
 # Data
@@ -45,7 +51,7 @@ unique(df_strategy$strategy)
 ## Work set
 ```{r}
 df_daily <- df_strategy %>%
-  filter(strategy == "RTS_14_18")
+  filter(strategy == "SI_10_14")
 df_daily$index <- row.names(df_daily)
 df_daily$strategy <- as.factor(as.character(df_daily$strategy))
 
@@ -423,7 +429,7 @@ df_dailyTS$sumVariable <- as.numeric(NA)
 for (vStrategy in vStrategies) {
   indexSTR <- which(df_dailyTS$strategy == vStrategy)
   
-  for (vVariable in vVariables) {
+  for (vVariable in vVariables[1]) {
     
     vMin <- min(df_dailyTS[indexSTR,vVariable], na.rm = T)
     vMax <- max(df_dailyTS[indexSTR,vVariable], na.rm = T)
@@ -457,7 +463,10 @@ for (vStrategy in vStrategies) {
 ## Grouping
 
 ```{r, message=F, warning=F}
-make_groups <- function(df_dailyTS, vVariables, nBoot = 8) {
+make_groups <- function(df_dailyTS, vVariables, nBoot = 8, vYears) {
+  
+  df_dailyTS <- df_dailyTS %>%
+    filter(year %in% vYears)
   
   get_index <- function(df = df_dailyTS) {
       df_index <- df %>%
@@ -560,13 +569,121 @@ df_groups
 }
 ```
 
-
 ```{r, message=F, warning=F}
-#Rprof()
-#Rprof(NULL)
-#s <- summaryRprof()
-#s
+make_groups_new <- function(df_dailyTS, vVariables, nBoot = 8, vYears) {
+  
+  df_dailyTS <- df_dailyTS %>%
+    filter(year %in% vYears)
+  
+  get_index <- function(df = df_dailyTS) {
+      df_index <- df %>%
+        group_by(strategy) %>%
+        summarise(start = min(index),stop = max(index),strategy = strategy[1]) %>%
+        group_by(strategy) %>%
+        summarise(index = sample(start:stop, stop-start, replace = T))
+      vIndex <- df_index$index
+      vIndex
+  }
+  
+  get_group <- function(df_dailyTS) {
+    
+    if (is.numeric(df_dailyTS$variable) == T) {
+      
+      df_group <- df_dailyTS %>%
+        group_by(sumVariable) %>%
+        summarise(variableName = vVariable,
+                  variableValue  = mean(variable, na.rm = T),
+                  variableFactor = "numeric",
+                  profitMean = mean(profitTS),
+                  ProfitSD = sd(profitTS),
+                  n = n(),
+                  year = as.character(year[1]))
+      
+    } else {
+      df_group <- df_dailyTS %>%
+        group_by(sumVariable) %>%
+        summarise(variableName = vVariable,
+                  variableValue  = 0,
+                  variableFactor = as.character(variable[1]),
+                  profitMean = mean(profitTS),
+                  ProfitSD = sd(profitTS),
+                  n = n(),
+                  year = as.character(year[1]))
+      }
+
+        df_group$group <- as.character(df_group$sumVariable)
+        #df_group$year <- as.character(df_group$year)
+        df_group <- df_group[ , !(names(df_group) == "sumVariable")]
+
+                df_group
+                }
+  
+  create_grouping_variable <- function(df_dailyTS) {
+    if (is.numeric(df_dailyTS[,"variable"][[1]])) {
+      
+      # for numeric
+      df_dailyTS <- df_dailyTS %>%
+        group_by(strategy) %>%
+        arrange(variable) %>%
+        mutate(gr_index = 1:max(n())) %>%
+        group_by(gr_index,
+                 sumVariable = cut(gr_index,
+                                   breaks = seq(from = 1,
+                                                to = max(n()),
+                                                length.out = ceiling((max(n())/50)+1))))
+      
+    } else {
+      df_dailyTS$sumVariable <- df_dailyTS[,"variable"]
+    }
+    df_dailyTS
+    }
+
+  df_groups <- data.frame(year = character(),
+                          variableName = character(),
+                          variableFactor = character(),
+                          variableValue = double(),
+                          profitMean = double(),
+                          ProfitSD = double(),
+                          n = integer(),
+                          group = character())
+  
+  # get bootstrap indexes 
+  df_dailyTS <- df_dailyTS[ , !(names(df_dailyTS) %in% c("index"))]
+  df_dailyTS <- df_dailyTS %>%
+    arrange(strategy,date)
+  df_dailyTS$index <- 1:nrow(df_dailyTS)
+  l_indexes <- list()
+  vRowNames <- c()
+  for (boot in 1:nBoot) {
+    for (vYear in vYears) {
+      vRowName <- paste0(boot,"_",vYear)
+      vRowNames[length(vRowNames)+1] <- vRowName
+      
+      l_indexes[[vRowName]] <- get_index(df = df_dailyTS[which(df_dailyTS$year == vYear),])
+    }
+  }
+  
+for (vVariable in vVariables) {
+  # create grouping variable
+  df_dailyTS[,"variable"] <- df_dailyTS[,vVariable]
+  df_dailyTS <- df_dailyTS[ , !(names(df_dailyTS) %in% c("sumVariable","cutVariable"))]
+  df_dailyTS <- create_grouping_variable(df_dailyTS = df_dailyTS)
+  
+  # create bootstrap df
+  l_dailyTS <- list()
+  for (vRowName in vRowNames) {
+    l_dailyTS[[vRowName]] <- df_dailyTS[l_indexes[[vRowName]],]
+  }
+  
+  # create groops
+  df_group <- dplyr::bind_rows(lapply(l_dailyTS,get_group))
+  df_groups <- dplyr::bind_rows(list(df_groups, df_group))
+}
+  
+df_groups
+}
 ```
+
 
 ### Stability for variable
 
@@ -576,8 +693,16 @@ vVariables <- grep(("_low|_hight|_pred"), vVariables_row, value = T)
 vVariables <- c(vVariables,c("probTS","RealProbTS","month","wday"))
 ```
 
+```{r}
+undebug(make_groups_new)
+df_groups_new <- make_groups_new(df_dailyTS = df_dailyTS, vVariables = c("probTS"), nBoot = 1, vYears = vYears)
+```
+
+
+
 ```{r, message=F, warning=F}
-df_groups <- make_groups(df_dailyTS = df_dailyTS, vVariables = vVariables, nBoot = 10)
+vYears <- unique(df_dailyTS$year)[sample(1:11,5)]
+df_groups <- make_groups(df_dailyTS = df_dailyTS, vVariables = vVariables, nBoot = 10, vYears = vYears)
 df_groups$group <- as.numeric(as.factor(df_groups$group))
 
 # calculate prob0
@@ -588,32 +713,6 @@ df_groups <- df_groups %>%
          prob0 = round(pt(t0, (n-1)),4))
 
 df_groups <- df_groups %>%
-  filter(!is.nan(prob0)) %>%
-  group_by(group,variableName) %>%
-  mutate(grProb0 = mean(prob0)) %>%
-  group_by(group,variableName) %>%
-  mutate(sd_grProb0 = sd(grProb0),
-         n_gr = length(unique(year)),
-         se_grProb0 = sd_grProb0/sqrt(n_gr))
-
-df_groups <- df_groups %>%
-  group_by(variableName, group, se_grProb0) %>%
-  summarise(variableValue = mean(variableValue),
-            variableFactor = variableFactor[1],
-            sdProb0 = sd(prob0),
-            n = n(),
-            seProb0 = sdProb0/sqrt(n),
-            prob0 = mean(prob0)) %>%
-  group_by(variableName, group) %>%
-  mutate(variableFactor = variableFactor[1],
-         seProb0 = if_else(seProb0 < 0.01, 0.01, seProb0),
-         weight = 1/((6*seProb0)^2),
-         se_grProb0 = if_else(se_grProb0 < 0.01, 0.01, se_grProb0),
-         gr_weight = 30/((6*se_grProb0)))# %>%
-  #mutate(weight = weight + gr_weight)
-
-
-df_groups <- df_groups %>%
   group_by(variableName, group) %>%
   summarise(variableValue = mean(variableValue),
             variableFactor = variableFactor[1],
@@ -622,14 +721,17 @@ df_groups <- df_groups %>%
             seProb0 = sdProb0/sqrt(n),
             prob0 = mean(prob0)) %>%
   mutate(seProb0 = if_else(seProb0 < 0.01, 0.01, seProb0),
-         weight = 1/((6*seProb0)^2))
+         weight = 1)
+         #weight = 1/((6*seProb0)^2))
+
+df_groups <- df_groups %>%
+  filter(!is.na(sdProb0))
+
 df_groups %>%
   group_by(variableName) %>%
   summarise(weight = median(weight), sd = median(sdProb0), se = median(seProb0)) %>%
   arrange(desc(weight))
-
 ```
-
 
 
 ```{r}
@@ -637,7 +739,7 @@ df_groups %>%
 ```
 
 ```{r}
-df_dailyTS[sapply(df_dailyTS, is.infinite)] <- NA
+df_daily[sapply(df_daily, is.infinite)] <- NA
 ```
 
 ## Ploting
@@ -692,7 +794,7 @@ vNRow <- nrow(m_groupsW)
 
 ```{r}
 get_prob0m <- function(vRow,vVariables,m_groupsW,m_variableValue,m_prob0,m_weight,vNRow) {
-# prepare matrix from row from df_dayly
+# prepare matrix from row from df_daily
 m_RowDaily <- as.matrix(as.numeric(vRow[vVariables]))
 m_RowDaily <- matrix(rep(m_RowDaily,each=vNRow),nrow=vNRow)
 
@@ -713,7 +815,6 @@ if (is.list(minindex) == T) {
 vNCol <- ncol(m_prob0)
 dim(m_prob0) <- c(vNRow*vNCol,1)
 dim(m_weight) <- c(vNRow*vNCol,1)
-
 
 
 minindex[which(is.na(minindex))] <- 0 #temp
@@ -796,14 +897,12 @@ df_Prob0Profits <- data.frame(strategy = character(),
                               n = integer(),
                               bootstrap = integer())
 
-vYears <- unique(df_daily$year)[1:5]
-        
 df_daily$index <- 1:nrow(df_daily)
 for (vProb0 in vProb0s) {
   # bootstraping
   for (boot in 1:10) {
     df_index <- df_daily %>%
-      filter(year %in% vYears) %>%
+      #filter(year %in% vYears) %>%
       group_by(strategy) %>%
       summarise(start = min(index),stop = max(index),strategy = strategy[1]) %>%
       group_by(strategy) %>%
@@ -840,7 +939,7 @@ df_Prob0 <- df_Prob0Profits %>%
             freq = mean(freq))
 
 vProb0 <- df_Prob0[which.max(df_Prob0$totalProfit),"prob0"][[1]]
-#vProb0 <- 0.4
+
 
 df_profit <- df_daily %>%
   mutate(profitProb0 = if_else(prob0 <= vProb0, profit, 0)) %>%
@@ -850,37 +949,31 @@ df_profit <- df_daily %>%
             Prob0 = vProb0)
 
 df_profit %>%
-  group_by(year) %>%
+  group_by(strategy) %>%
   summarise(profit = sum(profit),
             profitProb0 = sum(profitProb0),
             vProb0)
-```
 
-```{r}
-library(BayesFactor)
-source("./scripts/bayes/bayes_inference.R")
-source("./scripts/bayes/bayes_util.R")
-source("./scripts/bayes/bayes_single_mean_JZS.R")
-source("./scripts/bayes/bayes_two_mean.R")
-```
-
-
-```{r}
 df_profit$year <- as.numeric(as.character(df_profit$year))
 df_profit <- df_profit %>%
   mutate(diff = (profitProb0-profit),
-         forecast = if_else(year > 2014, T, F))
-df_profit
-```
+         forecast = if_else(year %in% vYears, F, T))
 
-```{r}
+df_profit
+vYears
+
 bayes_inference(y = diff, x = forecast, data = df_profit, 
+                statistic = "mean", 
+                type = "ht", alternative = "twosided", null = 0, 
+                prior = "JZS", rscale = 1, 
+                method = "theoretical", show_plot = T)
+
+bayes_inference(y = diff, data = df_profit, 
                 statistic = "mean", 
                 type = "ci", alternative = "twosided", null = 0, 
                 prior = "JZS", rscale = 1, 
                 method = "theoretical", show_plot = T)
 ```
-
 
 
 
