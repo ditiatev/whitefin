@@ -1,0 +1,509 @@
+---
+title: "moex_new"
+author: "ditiatev"
+date: "21 07 2020"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+
+# Setup
+```{r setup, include=FALSE}
+options(digits = 4)
+options(scipen = 999)
+
+library(statsr)
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+library(reshape2)
+library(BAS)
+library(GGally)
+library(FNN)
+library(BayesFactor)
+
+source("./scripts/saveGGplot.r")
+source("./scripts/opendir.r")
+source("./scripts/makePrColForStrategy.r")
+
+source("./scripts/bayes/bayes_inference.R")
+source("./scripts/bayes/bayes_util.R")
+source("./scripts/bayes/bayes_single_mean_JZS.R")
+source("./scripts/bayes/bayes_two_mean.R")
+
+source("./scripts/get_workset.R")
+source("./scripts/get_NormalDistForvard.r")
+source("./scripts/get_NormalDist.r")
+
+# KNN
+source("./scripts/normalizeXtrainXtest.R")
+source("./scripts/create_X_y.R")
+source("./scripts/paste_summary.R")
+source("./scripts/create_vector_dates.R")
+source("./scripts/get_sample_date_index.R")
+```
+
+# Data
+```{r}
+vStrategies <- c("RTS_10_14")
+df_daily <- get_WorkSet(vStrategies)
+```
+
+```{r}
+colnames(df_daily) <- gsub("\\.", "_",colnames(df_daily))
+```
+
+
+
+## MA
+Forvard profit
+```{r}
+df_profitForvard <- get_NormalDistForvard(df_daily = df_daily, vColName = 'profit', sliding_depth = 25)
+```
+
+Previos MA by vColNames
+```{r, warning=FALSE, message=FALSE}
+vColNames <- colnames(df_daily)[c(6:11, 16:60)]
+df_profitPr <- get_NormalDist(df_daily = df_daily,
+                              vColName = vColNames,
+                              sliding_depth = 50,
+                              slidind_return = c(10,25,50))
+
+vVariables <- colnames(df_profitPr)
+
+df_profitPr$profit <- df_profitForvard$profit_mean_Next_25
+df_profitPr$date <- ymd(df_daily$date)
+```
+
+
+# KNNSearch
+
+Note:
+- normalization happend in create_X_y
+
+## KNNSearch new df_vars 
+
+```{r, warning=FALSE, message=FALSE}
+vVariables <- unique(vVariables)
+len <- length(vVariables)
+vDates <- create_vector_dates()
+
+df_vars <- data.frame('k' = 0,
+                      'date' = vDates[1],
+                      'var1' = 'var1',
+                      'var2' = 'var2',
+                      'p_up_0_train' = 0,
+                      'p_up_0_test' = 0,
+                      'p_mean_profit_train' = 0,
+                      'p_mean_profit_test' = 0,
+                      'n_up_0_train' = 0,
+                      'n_up_0_test' = 0,
+                      'n_mean_profit_train' = 0,
+                      'n_mean_profit_test' = 0)
+
+df_vars$var1 <- as.character(df_vars$var1)
+df_vars$var2 <- as.character(df_vars$var2)
+```
+
+## KNNSearch fill df_vars
+
+```{r, warning=FALSE, message=FALSE}
+vVar1s <- unique(df_vars$var1)
+vVar2s <- unique(df_vars$var2)
+
+df_unique_variabels <- as.data.frame(t(combn(vVariables,2)))
+df_unique_variabels$V1 <- as.character(df_unique_variabels$V1)
+df_unique_variabels$V2 <- as.character(df_unique_variabels$V2)
+number_var_comb <- nrow(df_unique_variabels)
+```
+
+
+```{r, warning=FALSE, message=FALSE}
+for (x in 1:number_var_comb) {
+  vVar1 <- df_unique_variabels[x, "V1"]
+  vVar2 <- df_unique_variabels[x, "V2"]
+  
+  if (x%%100 == 0) {
+    print(round(x/number_var_comb,4))
+    }
+  
+  if (((vVar1 %in% vVar1s) & (vVar2 %in% vVar2s)) | ((vVar1 %in% vVar2s) & (vVar2 %in% vVar1s))) {
+    next
+  }
+  
+  df <- na.omit(df_profitPr[c(vVar1, vVar2, 'profit', 'date')])
+  
+  lDates       <- get_sample_date_index(vDates)
+  vDatesLeft   <- lDates$vDatesLeft
+  vDatesSample <- lDates$vDatesSample
+  
+  var_indexs <- c()
+  #### !!? Create sepparete df for var1-var2, make itteration throw dates and write resalt in common df
+  for (Ntime in 1:2) {
+    if (length(vDatesSample) == 0) {
+      next
+    }
+    
+    for (ndate in 1:length(vDatesSample)) {
+      date <- vDatesSample[ndate]
+      # create X,y
+      train_index <- df$date < date
+      test_index  <-
+        (df$date > (date %m+% months(1))) &
+        (df$date < (date %m+% months(3)))
+      
+      l <-
+        create_X_y(
+          df = df,
+          train_index = train_index,
+          test_index = test_index,
+          vVar1 = vVar1,
+          vVar2 = vVar2
+        )
+      
+      if (nrow(l$X_test) == 0) {
+        next
+      }
+      
+      for (nk in c(100)) {
+        # summary
+        var_index  <-
+          paste0('x_',
+                 as.character(x),
+                 "_y_",
+                 as.character(y),
+                 "_nk_",
+                 nk,
+                 "_date_",
+                 date)
+        var_indexs <- c(var_indexs, var_index)
+        df_vars[var_index, ] <-
+          paste_summary(l$X_train, l$X_test, l$y_train, l$y_test)
+      }
+    }
+    
+    p_up_0_test <-
+      mean(df_vars[var_indexs, 'p_up_0_test'], na.rm = TRUE)
+    if (is.na(p_up_0_test)) {
+      p_up_0_test <- 0
+    }
+    n_up_0_test <-
+      mean(df_vars[var_indexs, 'n_up_0_test'], na.rm = TRUE)
+    if (is.na(n_up_0_test)) {
+      n_up_0_test <- 0
+    }
+    
+    #### !!? We can use higher number to filter more variabels from going for full next loop
+    if ((p_up_0_test < 0.6) & (n_up_0_test < 0.6)) {
+      vDatesSample <- c()
+    } else {
+      vDatesSample <- lDates$vDatesLeft
+    }
+  }
+}
+```
+
+
+# read df_vars file
+```{r}
+# write.csv(x=df_vars, file="./data/df_vars.csv", row.names = F)
+# df_vars <- read.csv("./data/df_vars.csv")
+```
+
+```{r}
+df_summary <- df_vars %>%
+  group_by(var1, var2, k) %>%
+  summarise('p_up_0_train' = mean(p_up_0_train, na.rm = T),
+            'p_up_0_test' = mean(p_up_0_test, na.rm = T),
+            'p_mean_profit_train' = mean(p_mean_profit_train, na.rm = T),
+            'p_mean_profit_test' = mean(p_mean_profit_test, na.rm = T),
+            'n_up_0_train' = mean(n_up_0_train, na.rm = T),
+            'n_up_0_test' = mean(n_up_0_test, na.rm = T),
+            'n_mean_profit_train' = mean(n_mean_profit_train, na.rm = T),
+            'n_mean_profit_test' = mean(n_mean_profit_test, na.rm = T),
+            n = n())
+
+df_summary_filter <- df_summary %>%
+  filter(n == 36)
+
+df_summary_filter$var1 <- as.character(df_summary_filter$var1)
+df_summary_filter$var2 <- as.character(df_summary_filter$var2)
+
+df_top50vars_maxProfit <- df_summary_filter %>%
+  arrange(desc(p_mean_profit_test)) %>%
+  head(50) %>%
+  select(var1, var2,p_mean_profit_test)
+
+df_top50vars_minProfit <- df_summary_filter %>%
+  arrange(n_mean_profit_test) %>%
+  head(50) %>%
+  select(var1, var2,n_mean_profit_test)
+
+df_topVars <- merge(df_top50vars_maxProfit,df_top50vars_minProfit, all = TRUE, by = c('var1','var2'))
+```
+
+# Vouting
+
+```{r}
+for (x in 1600:2440) {
+  date <- df_profitPr[x,"date"]
+  #print(date)
+  
+  df_vote <- data.frame(
+  "var1" = "var1",
+  "var2" = "var2",
+  "pred_profit" = 0,
+  "p_mean_profit_test" = 0,
+  "n_mean_profit_test" = 0,
+  "date" = vDates[2]
+  )
+  df_vote$var1 <- as.character(df_vote$var1)
+  df_vote$var2 <- as.character(df_vote$var2)
+  
+  for (index in 1:nrow(df_topVars)) {
+    
+  vVar1 <- df_topVars[index,"var1"][[1]]
+  vVar2 <- df_topVars[index,"var2"][[1]]
+  
+  df <- na.omit(df_profitPr[c(vVar1,vVar2,'profit','date')])
+  index_tain <- df$date < (date  %m-% days(26))
+  index_predict <- df$date == date
+  
+  l <- create_X_y(df = df,
+                  train_index = index_tain,
+                  test_index = index_predict,
+                  vVar1 = vVar1, vVar2 = vVar2)
+  
+  knn_test  <- knn.reg(train=l$X_train, y=l$y_train, test=l$X_test, k=100)
+  
+  df_vote[index,"var1"] <- as.character(vVar1)
+  df_vote[index,"var2"] <- as.character(vVar2)
+  df_vote[index,"pred_profit"] <- knn_test[["pred"]]
+  
+  df_vote[index,"p_mean_profit_test"] <- df_summary_filter[index,"p_mean_profit_test"]
+  df_vote[index,"n_mean_profit_test"] <- df_summary_filter[index,"n_mean_profit_test"]
+  
+  df_vote[index,"date"] <- date
+  }
+  
+  df_vote_m <- df_vote %>%
+    mutate('profit_vote_p' = pred_profit*abs(p_mean_profit_test),
+           'profit_vote_n' = pred_profit*abs(n_mean_profit_test))
+  
+  df_vote_m_n <- df_vote_m %>%
+    filter(!is.na(n_mean_profit_test)) %>%
+    summarise(n_n = n(), profit_vote_n = sum(profit_vote_n)/sum(abs(n_mean_profit_test)))
+  df_vote_m_p <- df_vote_m %>%
+    filter(!is.na(p_mean_profit_test)) %>%
+    summarise(p_n = n(), profit_vote_p = sum(profit_vote_p)/sum(abs(p_mean_profit_test)))
+  
+  df_profitPr[x,'n_n'] <- df_vote_m_n[1,'n_n']
+  df_profitPr[x,'profit_vote_n'] <- df_vote_m_n[1,'profit_vote_n']
+  
+  df_profitPr[x,'p_n'] <- df_vote_m_p[1,'p_n']
+  df_profitPr[x,'profit_vote_p'] <- df_vote_m_p[1,'profit_vote_p']
+}
+```
+
+```{r}
+vVar1 = 'profit_vote_n'
+vVar2 = 'profit_vote_p'
+
+for (x in 1700:2440) {
+  
+  date <- df_profitPr[x,"date"]
+  df <- na.omit(df_profitPr[c(vVar1,vVar2,'profit','date')])
+  #index_tain <- df$date < (date %m-% days(26))
+  index_tain <- df$date < (date)
+  index_predict <- df$date == date
+  
+  l <- create_X_y(df = df,
+                  train_index = index_tain,
+                  test_index = index_predict,
+                  vVar1 = vVar1, 
+                  vVar2 = vVar2)
+  knn_test  <- knn.reg(train=l$X_train, y=l$y_train, test=l$X_test, k=50)
+  df_profitPr[x,'profit_pred'] <- knn_test[['pred']]
+}
+```
+
+
+```{r}
+df_profitPr$profit_by_day <- df_daily$profit
+df_profitPr$month <- df_daily$month 
+df_profitPr$year <- df_daily$year
+
+df_profitPr_count <- df_profitPr[1700:2440,]
+index <- (df_profitPr_count$profit_pred > 0.025)
+df_profitPr_count[,"trade_index"] <- 'NOT TRADE'
+df_profitPr_count[index,"trade_index"] <- 'TRADE'
+
+sum(df_profitPr_count[index,"profit_by_day"], na.rm = TRUE)
+sum(df_profitPr_count[,"profit_by_day"],na.rm = TRUE)
+
+df_profitPr_count %>%
+        mutate(profit_model = if_else(trade_index == 'TRADE', profit_by_day, 0)) %>%
+        group_by(year, month) %>%
+        summarise(total_profit = sum(profit_by_day), total_profit_model = sum(profit_model, na.rm = TRUE),
+                  mean_day_profit = mean(profit_by_day), mean_day_profit_model = mean(profit_model, na.rm = TRUE),
+                  k = abs((mean_day_profit_model-mean_day_profit)/mean_day_profit))
+
+df_profitPr_count %>%
+        mutate(profit_model = if_else(trade_index == 'TRADE', profit_by_day, 0)) %>%
+        group_by(year) %>%
+        summarise(total_profit = sum(profit_by_day), total_profit_model = sum(profit_model, na.rm = TRUE),
+                  mean_day_profit = mean(profit_by_day), mean_day_profit_model = mean(profit_model, na.rm = TRUE),
+                  k = abs((mean_day_profit_model-mean_day_profit)/mean_day_profit))
+```
+
+
+# Plot
+
+```{r}
+ggplot() +
+  geom_point(aes(x = profit_pred, y = profit, color = profit_pred), 
+             shape=15, size = 2, data = df_profitPr) +
+  scale_color_gradient2(midpoint=0, space = "Lab",
+                        low="red", mid="white", high="green") +
+  xlab('profit_pred')+ylab('profit')
+```
+
+```{r}
+ggplot() +
+  geom_point(aes(x = profit_vote_n, y = profit_vote_p, 
+                 color = profit, alpha = 0.1), 
+             shape=15, size = 2, data = df_profitPr) +
+  scale_color_gradient2(midpoint=0, limit = c(-.3,.3), space = "Lab",
+                        low="red", mid="white", high="green") +
+  #geom_density2d(aes(x = 'profit_vote_n', y = 'profit_vote_p', alpha = 0.099), data = df_profitPr) +
+  xlab('profit_vote_n')+ylab('profit_vote_p')
+```
+
+```{r}
+ggplot() +
+  geom_point(aes(x = profit_vote_n, y = profit_vote_p, 
+                 color = profit_pred), 
+             shape=15, size = 2, data = df_profitPr) +
+  scale_color_gradient2(midpoint=0, space = "Lab",
+                        low="red", mid="white", high="green") +
+  xlab('profit_vote_n')+ylab('profit_vote_p')
+```
+
+```{r}
+df_profitPr$profit_by_day <- df_daily$profit
+
+df_profitPr %>%
+  filter(year %in% c(2017,2018,2019,2020)) %>%
+ggplot() +
+  geom_point(aes(x = date, y = profit, color = profit_pred), 
+             shape=15, size = 2) +
+  scale_color_gradient2(midpoint=0, space = "Lab",
+                        low="red", mid="white", high="green") +
+  xlab('date')+ylab('profit_MA25')
+```
+
+```{r}
+df_profitPr$profit_by_day <- df_daily$profit
+
+df_profitPr %>%
+  filter(year %in% c(2017,2018,2019,2020)) %>%
+ggplot() +
+  geom_point(aes(x = date, y = profit_by_day, color = profit_pred), 
+             shape=15, size = 2) +
+  scale_color_gradient2(midpoint=0, space = "Lab",
+                        low="red", mid="white", high="green") +
+  xlab('profit_vote_n')+ylab('profit_vote_p')
+```
+
+
+
+```{r}
+ggplot() +
+  geom_point(aes(x = profit_pred, y = profit_by_day, color = profit_pred), 
+             shape=15, size = 2, data = df_profitPr) +
+  scale_color_gradient2(midpoint=0, space = "Lab",
+                        low="red", mid="white", high="green") +
+  xlab('profit_pred')+ylab('profit')
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
