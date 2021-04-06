@@ -14,6 +14,7 @@ options(digits = 4)
 options(scipen = 999)
 
 library(statsr)
+library(plyr)
 library(dplyr)
 library(ggplot2)
 library(lubridate)
@@ -47,14 +48,10 @@ source("./scripts/get_sample_date_index.R")
 # Data
 ```{r}
 vStrategies <- c("RTS_10_14")
+#vStrategies <- c("SI_10_14")
 df_daily <- get_WorkSet(vStrategies)
-```
-
-```{r}
 colnames(df_daily) <- gsub("\\.", "_",colnames(df_daily))
 ```
-
-
 
 ## MA
 Forvard profit
@@ -64,7 +61,7 @@ df_profitForvard <- get_NormalDistForvard(df_daily = df_daily, vColName = 'profi
 
 Previos MA by vColNames
 ```{r, warning=FALSE, message=FALSE}
-vColNames <- colnames(df_daily)[c(6:11, 16:60)]
+vColNames <- colnames(df_daily)[c(6:11)]
 df_profitPr <- get_NormalDist(df_daily = df_daily,
                               vColName = vColNames,
                               sliding_depth = 50,
@@ -76,6 +73,15 @@ df_profitPr$profit <- df_profitForvard$profit_mean_Next_25
 df_profitPr$date <- ymd(df_daily$date)
 ```
 
+```{r}
+df_common <- df_profitPr[,colnames(df_profitPr)[c(308,37:306)]]
+head(df_common)
+```
+
+```{r}
+df_profitPr <- merge(df_profitPr,df_common, all.x = TRUE, by.x = c("date"), by.y = c("date"))
+```
+
 
 # KNNSearch
 
@@ -85,7 +91,10 @@ Note:
 ## KNNSearch new df_vars 
 
 ```{r, warning=FALSE, message=FALSE}
-vVariables <- unique(vVariables)
+vVariables <- unique(colnames(df_profitPr))
+vVariables <- vVariables[which(!(vVariables %in% c("date","profit")))]
+
+
 len <- length(vVariables)
 vDates <- create_vector_dates()
 
@@ -116,21 +125,543 @@ df_unique_variabels <- as.data.frame(t(combn(vVariables,2)))
 df_unique_variabels$V1 <- as.character(df_unique_variabels$V1)
 df_unique_variabels$V2 <- as.character(df_unique_variabels$V2)
 number_var_comb <- nrow(df_unique_variabels)
+new_variables_index <- which(!is.na(df_unique_variabels$V1))
+
+selected_variables_index <- sample(new_variables_index, size = 10)
+df_unique_variabels_selected <- df_unique_variabels[-selected_variables_index,]
+```
+
+```{r}
+df_vars_selected <- df_vars %>%
+  group_by(var1, var2) %>%
+  summarise(n = n())
+```
+
+```{r}
+#df_unique_variabels <- merge(df_unique_variabels,df_vars_selected, all.x = TRUE, by.x = c("V1","V2"), by.y = c("var1","var2"))
+#df_unique_variabels$selected <- 1
+
+new_variables_index <- which(is.na(df_unique_variabels$n))
 ```
 
 
+
+
+```{r}
+df_search_vars <- do.call(rbind,l_var_parallel)
+```
+
+```{r}
+df_empty_var <- df_unique_variabels[selected_variables_index,]
+df_empty_var <- merge(df_empty_var,df_search_vars, all.x = TRUE, by.x = c("V1","V2"), by.y = c("var1","var2"))
+```
+
+
+#NEW VERTION
+
 ```{r, warning=FALSE, message=FALSE}
-for (x in 1:number_var_comb) {
-  vVar1 <- df_unique_variabels[x, "V1"]
-  vVar2 <- df_unique_variabels[x, "V2"]
+search_variabels <- function(df_profitPr = df_profitPr,
+                             selected_variables_index = selected_variables_index,
+                             vDates = vDates,
+                             df_unique_variabels = df_unique_variabels) {
+  
+    get_sample_date_index <- function(vDates, sample_size = 5) {
+        
+        date_index <- 1:length(vDates)
+        
+        if (length(date_index) < sample_size) {
+                sample_size <- length(date_index)
+        }
+        
+        sample_date_index <- sample(date_index, size = sample_size)
+        
+        return(list('vDatesSample' = vDates[sample_date_index],
+                    'vDatesLeft' = vDates[-sample_date_index]))
+    }
+    
+    create_X_y <- function(df = df, train_index = train_index, test_index = test_index, 
+                       vVar1 = vVar1, vVar2 = vVar2, normalization = TRUE) {
+        
+        X_train <- df[train_index,c(vVar1,vVar2)]
+        y_train <- df[train_index,c('profit')]
+        X_test  <- df[test_index,c(vVar1,vVar2)]
+        y_test  <- df[test_index,c('profit')]
+        
+        if (normalization == TRUE) {
+                
+                normalizeXtrainXtest <-
+                        function(X_train, X_test) {
+                                
+                                vColNames <- colnames(X_train)
+                                for (vColName in vColNames) {
+                                        
+                                        x_sd   <- sd(X_train[,vColName], na.rm = T)
+                                        x_mean <- mean(X_train[,vColName], na.rm = T)
+                                        min_x  <- x_mean - x_sd * 3
+                                        
+                                        X_train[, vColName] <- ((X_train[,vColName] - min_x) / (6 * x_sd))
+                                        X_test[, vColName]  <- ((X_test[,vColName] - min_x) / (6 * x_sd))
+                                }
+
+                                return(list('X_train' = X_train, 
+                                            'X_test' = X_test))
+                        }
+                
+                X <- normalizeXtrainXtest(X_train,X_test)
+                X_train <- X$X_train
+                X_test  <- X$X_test
+        }
+        
+        l <- list('X_train' = X_train,
+                  'y_train' = y_train,
+                  'X_test' = X_test,
+                  'y_test' = y_test)
+        
+        return(l)}
+    
+    paste_summary <- function(X_train = X_train, X_test = X_test,
+                              y_train = y_train, y_test = y_test, nk = nk,
+                              vVar1 = vVar1, vVar2 = vVar2, date = date) {
+      
+      get_summary <- function(pred, y, pred_train) {
+                df <- data.frame('pred' = pred, 'profit' = y)
+                
+                min25 <- quantile(pred_train, 0.25, type = 1)
+                max25 <- quantile(pred_train, 0.75, type = 1)
+                
+                df <- df %>%
+                        mutate(
+                                up_0 = case_when(profit <= 0 ~ 0,
+                                                 profit > 0 ~ 1),
+                                gr = case_when(pred <= min25 ~ 'min25',
+                                               pred >= max25 ~ 'max25',
+                                               TRUE ~ 'middle')
+                        ) %>%
+                        group_by(gr) %>%
+                        summarise(up_0 = mean(up_0),
+                                  mean_profit = mean(profit))
+                df <- as.data.frame(df)
+                
+                df[1, 'profit'] <- max25
+                df[3, 'profit'] <- min25
+                return(df[c(1, 3), ])
+        }
+        
+        knn_train <- FNN::knn.reg(train=X_train,y=y_train,test=X_train,k=nk)
+        knn_test  <- FNN::knn.reg(train=X_train,y=y_train,test=X_test, k=nk)
+        
+        train_summary <- get_summary(pred = knn_train[["pred"]], y = y_train, pred_train = knn_train[["pred"]])
+        test_summary <- get_summary(pred = knn_test[["pred"]], y = y_test, pred_train = knn_train[["pred"]])
+        
+        df_current_summary <- data.frame(
+                'k'   = nk,
+                'date'   = date,
+                'var1'  = as.character(vVar1),
+                'var2'  = as.character(vVar2))
+        df_current_summary$var1 <- as.character(df_current_summary$var1)
+        df_current_summary$var2 <- as.character(df_current_summary$var2)
+        
+        # positive summary
+        df_current_summary[1,'p_up_0_train']  = train_summary[1, 'up_0']
+        df_current_summary[1,'p_up_0_test'] = test_summary[1, 'up_0']
+        df_current_summary[1,'p_mean_profit_train'] = train_summary[1, 'mean_profit']
+        df_current_summary[1,'p_mean_profit_test'] = test_summary[1, 'mean_profit']
+        # negative summary
+        df_current_summary[1,'n_up_0_train']  = 1 - train_summary[2, 'up_0']
+        df_current_summary[1,'n_up_0_test'] = 1 - test_summary[2, 'up_0']
+        df_current_summary[1,'n_mean_profit_train'] = train_summary[2, 'mean_profit']
+        df_current_summary[1,'n_mean_profit_test'] = test_summary[2, 'mean_profit']
+        
+        return(df_current_summary)
+    }
+    
+    return_df_var <- function(z, df_profitPr = df_profitPr,
+                              selected_variables_index = selected_variables_index,
+                              vDates = vDates,
+                              df_unique_variabels = df_unique_variabels) {
+      x <- selected_variables_index[z]
+      vVar1 <- df_unique_variabels[x, "V1"]
+      vVar2 <- df_unique_variabels[x, "V2"]
+      l_var <- list()
+
+      df <- na.omit(df_profitPr[c(vVar1, vVar2, 'profit', 'date')])
+
+      lDates       <- get_sample_date_index(vDates)
+      vDatesLeft   <- lDates$vDatesLeft
+      vDatesSample <- lDates$vDatesSample
+      df_var <- c()
+      p_up_0_test <- 0
+      n_up_0_test <- 0
+
+      for (Ntime in 1:2) {
+        for (ndate in 1:length(vDatesSample)) {
+          date <- vDatesSample[ndate]
+          # create X,y
+          train_index <- which(df$date < date)
+          test_index  <- which((df$date > (date +30)) & (df$date < (date + 90)))
+          if (length(test_index) != 0) {
+            l <- create_X_y(df = df, train_index = train_index, test_index = test_index,
+                            vVar1 = vVar1, vVar2 = vVar2)
+            # summary
+            var_index  <- paste0('x_', as.character(x),"_nk_",nk,"_date_",date)
+            l_var[var_index] <- list(paste_summary(l$X_train, l$X_test, l$y_train, l$y_test, nk = nk,
+                                                 vVar1 = vVar1, vVar2 = vVar2, date = date))
+          }
+        }
+
+        if (Ntime == 2) {
+          return(df_var)
+        }
+        
+        if (length(l_var) != 0) {
+          df_var <- plyr::ldply(l_var, data.frame)
+          
+          p_up_0_test <- mean(df_var$p_up_0_test, na.rm = TRUE)
+          n_up_0_test <- mean(df_var$n_up_0_test, na.rm = TRUE)
+          
+          
+          if ((p_up_0_test < 0.6) & (n_up_0_test < 0.6)) {
+            return(df_var)
+            } else {
+              vDatesSample <- lDates$vDatesLeft
+              }
+          
+        } else {
+          vDatesSample <- lDates$vDatesLeft
+        }
+      }
+
+      return(df_var)
+      }
+    
+    ##########################
+    ##########################
+    ##########################
+    ##########################
+    ##########################
+    
+  nk <- 100
+  len = length(selected_variables_index)
+  #for (x in selected_variables_index) {
+  for (z in 1:len) {
+  #foreach(z = 1:len, .packages="dplyr") %dopar% {
+    df_var <- return_df_var(z, df_profitPr = df_profitPr,
+                            selected_variables_index = selected_variables_index,
+                            vDates = vDates,
+                            df_unique_variabels = df_unique_variabels)
+      # x <- selected_variables_index[z]
+      # vVar1 <- df_unique_variabels[x, "V1"]
+      # df_var <- vVar1
+    df_var
+  }
+  df_var
+  }
+```
+
+```{r}
+    paste_summary <- function(X_train = X_train, X_test = X_test,
+                              y_train = y_train, y_test = y_test, nk = nk,
+                              vVar1 = vVar1, vVar2 = vVar2, date = date) {
+      
+      get_summary <- function(pred, y, point) {
+                df <- data.frame('pred' = pred, 'profit' = y)
+                
+                index_pred <- df$pred >= point
+                index_y <- df_profit >= 0
+                
+                TP_index <- which((df$pred >= point) & (df$profit >= 0))
+                FP_index <- which((df$pred >= point) & (df$profit < 0))
+                TN_index <- which((df$pred < point)  & (df$profit < 0))
+                FN_index <- which((df$pred < point)  & (df$profit >= 0))
+                
+                return(list(TP_index,FP_index,TN_index,FN_index))
+        }
+        
+        knn_train <- FNN::knn.reg(train=X_train,y=y_train,test=X_train,k=nk)
+        knn_test  <- FNN::knn.reg(train=X_train,y=y_train,test=X_test, k=nk)
+        
+        point <- quantile(knn_train[["pred"]], 0.25, type = 1)
+        
+        train_summary <- get_summary(pred = knn_train[["pred"]], y = y_train, point = point)
+        test_summary <- get_summary(pred = knn_test[["pred"]], y = y_test, point = point)
+        
+        df_current_summary <- data.frame(
+                'k'   = nk,
+                'date'   = date,
+                'var1'  = as.character(vVar1),
+                'var2'  = as.character(vVar2))
+        df_current_summary$var1 <- as.character(df_current_summary$var1)
+        df_current_summary$var2 <- as.character(df_current_summary$var2)
+        
+        # positive summary
+        df_current_summary[1,'p_up_0_train']  = train_summary[1, 'up_0']
+        df_current_summary[1,'p_up_0_test'] = test_summary[1, 'up_0']
+        df_current_summary[1,'p_mean_profit_train'] = train_summary[1, 'mean_profit']
+        df_current_summary[1,'p_mean_profit_test'] = test_summary[1, 'mean_profit']
+        # negative summary
+        df_current_summary[1,'n_up_0_train']  = 1 - train_summary[2, 'up_0']
+        df_current_summary[1,'n_up_0_test'] = 1 - test_summary[2, 'up_0']
+        df_current_summary[1,'n_mean_profit_train'] = train_summary[2, 'mean_profit']
+        df_current_summary[1,'n_mean_profit_test'] = test_summary[2, 'mean_profit']
+        
+        return(df_current_summary)
+    }
+```
+
+```{r}
+ps <- paste_summary(l$X_train, l$X_test, l$y_train, l$y_test, nk = nk,
+                    vVar1 = vVar1, vVar2 = vVar2, date = date)
+```
+
+
+```{r}
+      get_summary <- function(pred, y, point) {
+                df <- data.frame('pred' = pred, 'profit' = y)
+      
+                TP_index <- which((df$pred >= point) & (df$profit >= 0))
+                FP_index <- which((df$pred >= point) & (df$profit < 0))
+                TN_index <- which((df$pred < point)  & (df$profit < 0))
+                FN_index <- which((df$pred < point)  & (df$profit >= 0))
+                
+                TP_sum <- sum(df[TP_index,'profit'], na.rm = T)
+                FP_sum <- sum(df[FP_index,'profit'], na.rm = T)
+                TN_sum <- sum(df[TN_index,'profit'], na.rm = T)
+                FN_sum <- sum(df[FN_index,'profit'], na.rm = T)
+                
+                best_pr <- (TP_sum+FP_sum) / sum(df$pred, na.rm = T)
+                names(best_pr) < 'best_pr'
+
+                gs = c(TP_sum, FP_sum, TN_sum, FN_sum,
+                       length(TP_index),length(FP_index),length(TN_index),length(FN_index))
+                names(gs) = c( "TP_sum" , "FP_sum" , "TN_sum" , "FN_sum",
+                                "TP_n" , "FP_n" , "TN_n" , "FN_n")
+                
+                sPR <- 1+gs["FP_sum"] / gs["TP_sum"]
+                sP_pers <- gs["TP_sum"] / (gs["TP_sum"] + gs["FN_sum"])
+                sNR <- 1+gs["FN_sum"] / gs["TN_sum"]
+                sN_pers <- gs["TN_sum"] / (gs["TN_sum"] + gs["FP_sum"])
+                
+                nPR <- gs['TP_n'] / (gs['TP_n'] + gs['FP_n'])
+                nP_pers <- gs['TP_n'] / (gs['TP_n'] + gs['FN_n'])
+                nNR <- gs['TN_n'] / (gs['TN_n'] + gs['FN_n'])
+                nN_pers <- gs['TN_n'] / (gs['TN_n'] + gs['FP_n'])
+
+                vSummary <- c(sPR,sP_pers,sNR,sN_pers,
+                              nPR,nP_pers,nNR,nN_pers)
+                names(vSummary) <- c('sPR','sP_pers','sNR','sN_pers',
+                                     'nPR','nP_pers','nNR','nN_pers')
+                
+                return(c(best_pr))
+        }
+```
+
+```{r}
+      get_summary <- function(pred, y, point) {
+                df <- data.frame('pred' = pred, 'profit' = y)
+      
+                TP_index <- which((df$pred >= point) & (df$profit >= 0))
+                FP_index <- which((df$pred >= point) & (df$profit < 0))
+                TN_index <- which((df$pred < point)  & (df$profit < 0))
+                FN_index <- which((df$pred < point)  & (df$profit >= 0))
+                
+                TP_sum <- sum(df[TP_index,'profit'], na.rm = T)
+                FP_sum <- sum(df[FP_index,'profit'], na.rm = T)
+                TN_sum <- sum(df[TN_index,'profit'], na.rm = T)
+                FN_sum <- sum(df[FN_index,'profit'], na.rm = T)
+                
+                best_pr <- (TP_sum+FP_sum) / sum(df$pred, na.rm = T)
+                names(best_pr) < 'best_pr'
+
+                gs = c(TP_sum, FP_sum, TN_sum, FN_sum,
+                       length(TP_index),length(FP_index),length(TN_index),length(FN_index))
+                names(gs) = c( "TP_sum" , "FP_sum" , "TN_sum" , "FN_sum",
+                                "TP_n" , "FP_n" , "TN_n" , "FN_n")
+                
+                sPR <- 1+gs["FP_sum"] / gs["TP_sum"]
+                sP_pers <- gs["TP_sum"] / (gs["TP_sum"] + gs["FN_sum"])
+                sNR <- 1+gs["FN_sum"] / gs["TN_sum"]
+                sN_pers <- gs["TN_sum"] / (gs["TN_sum"] + gs["FP_sum"])
+                
+                nPR <- gs['TP_n'] / (gs['TP_n'] + gs['FP_n'])
+                nP_pers <- gs['TP_n'] / (gs['TP_n'] + gs['FN_n'])
+                nNR <- gs['TN_n'] / (gs['TN_n'] + gs['FN_n'])
+                nN_pers <- gs['TN_n'] / (gs['TN_n'] + gs['FP_n'])
+
+                vSummary <- c(sPR,sP_pers,sNR,sN_pers,
+                              nPR,nP_pers,nNR,nN_pers)
+                names(vSummary) <- c('sPR','sP_pers','sNR','sN_pers',
+                                     'nPR','nP_pers','nNR','nN_pers')
+                
+                return(c(best_pr))
+        }
+```
+
+```{r}
+vVar1 <- df_unique_variabels[2886, "V1"]
+vVar2 <- df_unique_variabels[2886, "V2"]
+df <- na.omit(df_profitPr[c(vVar1, vVar2, 'profit', 'date')])
+
+lDates       <- get_sample_date_index(vDates)
+vDatesLeft   <- lDates$vDatesLeft
+vDatesSample <- lDates$vDatesSample
+date <- vDatesSample[2]
+
+train_index <- which(df$date < date)
+test_index  <- which((df$date > (date + 30)) & (df$date < (date + 120)))
+
+l <- create_X_y(df = df,train_index = train_index,test_index = test_index,vVar1 = vVar1,vVar2 = vVar2)
+```
+
+```{r}
+knn_train <- FNN::knn.reg(train=l$X_train, y=l$y_train, test=l$X_train, k=150)
+l_sum <- list()
+for (x in seq(from = 0.01, to = .99, length.out = 100 )) {
+  point <- quantile(knn_train[["pred"]], x, type = 1)
+  l_sum[as.character(point)] <- list(get_summary(pred = knn_train[["pred"]], y = l$y_train, point = point))
+}
+```
+
+```{r}
+df_sum <- as.data.frame(do.call(rbind,l_sum))
+df_sum$point <- as.numeric(rownames(df_sum))
+df_sum$P_sum <- df_sum$TP_sum+df_sum$FP_sum
+index <- which(df_sum$P_sum == max(df_sum$P_sum))
+opt_point <- df_sum[index,"point"]
+
+df<- data.frame('pred' = knn_train[["pred"]], 'profit' = l$y_train)
+ggplot() +
+  geom_point(aes(x = pred, y = profit, color = pred), 
+             shape=15, size = 2, data = df) +
+  scale_color_gradient2(midpoint=0, space = "Lab",
+                        low="red", mid="white", high="green") +
+  xlab('profit_pred')+ylab('profit') +
+  geom_vline(xintercept = opt_point, linetype="dotted", 
+                color = "red", size=1.5) +
+  geom_hline(yintercept=0, linetype="dotted", 
+                color = "red", size=1.5)
+
+ggplot() +
+  geom_point(aes(x = point, y = sPR*sP_pers), 
+             shape=15, size = 2, data = df_sum)
+
+ggplot() +
+  geom_point(aes(x = point, y = TP_sum+FP_sum), 
+             shape=15, size = 2, data = df_sum)
+
+ggplot() +
+  geom_point(aes(x = point, y = sNR*sN_pers), 
+             shape=15, size = 2, data = df_sum)
+
+ggplot() +
+  geom_point(aes(x = point, y = TN_sum+FN_sum), 
+             shape=15, size = 2, data = df_sum)
+
+ggplot() +
+  geom_point(aes(x = point, y = (1+sNR)*sN_pers), 
+             shape=15, size = 2, data = df_sum)
+
+ggplot() +
+  geom_point(aes(x = point, y = (1+sPR)*sP_pers), 
+             shape=15, size = 2, data = df_sum)
+
+df_sum[index,]
+```
+
+```{r}
+df_sum$sPR_pers <- df_sum$sP_pers*(df_sum$sPR)
+df_sum$sNR_pers <- df_sum$sN_pers*(df_sum$sNR)
+```
+
+```{r}
+which(max(df_sum$sPR_pers) == df_sum$sPR_pers)
+which(max(df_sum$sNR_pers) == df_sum$sNR_pers)
+```
+
+```{r}
+(df_sum[index,'TP_sum']+df_sum[index,'FP_sum'])/(df_sum[index,'TP_sum']+df_sum[index,'FN_sum'])
+
+(df_sum[index,'TN_sum']+df_sum[index,'FN_sum'])/(df_sum[index,'TN_sum']+df_sum[index,'FP_sum'])
+```
+
+```{r}
+(df_sum[index,'TP_sum']+df_sum[index,'FP_sum'])/(df_sum[index,'TP_sum']+df_sum[index,'FP_sum'] + (df_sum[index,'TN_sum']+df_sum[index,'FN_sum']))
+
+(df_sum[index,'TN_sum']+df_sum[index,'FN_sum'])/(df_sum[index,'TP_sum']+df_sum[index,'FP_sum'] + (df_sum[index,'TN_sum']+df_sum[index,'FN_sum']))
+```
+
+
+```{r}
+df_sum[index,'TP_sum']+df_sum[index,'FP_sum'] + (df_sum[index,'TN_sum']+df_sum[index,'FN_sum'])
+```
+
+
+```{r}
+sum(df$profit,na.rm = T)/sum(df[which(df$profit>0),"profit"],na.rm = T)
+```
+
+
+
+
+
+
+```{r, warning=FALSE, message=FALSE}
+#debug(search_variabels)
+l_var <- search_variabels(df_profitPr = df_profitPr,
+                          selected_variables_index = selected_variables_index,
+                          vDates = vDates,
+                          df_unique_variabels = df_unique_variabels)
+```
+
+
+# testing parallel
+```{r, warning=FALSE, message=FALSE}
+search_variabels_parallel <- function(df_profitPr = df_profitPr,
+                                     selected_variables_index = selected_variables_index,
+                                     vDates = vDates,
+                                     df_unique_variabels = df_unique_variabels) {
+  cl <- parallel::makeCluster(3)
+  doParallel::registerDoParallel(cl)
+  l_var <- tryCatch(search_variabels(df_profitPr = df_profitPr,
+                                     selected_variables_index = selected_variables_index,
+                                     vDates = vDates,
+                                     df_unique_variabels = df_unique_variabels), 
+                    error = function(e) print(e))
+  parallel::stopCluster(cl)
+  l_var
+}
+
+system.time(
+l_var_parallel <- search_variabels_parallel(df_profitPr = df_profitPr,
+                                            selected_variables_index = selected_variables_index[1:10],
+                                            vDates = vDates,
+                                            df_unique_variabels = df_unique_variabels)
+)
+df_search_vars <- do.call(rbind,l_var_parallel)
+```
+
+
+```{r}
+View(df_unique_variabels[selected_variables_index[1:5],])
+```
+
+
+# OLD VERSION
+
+```{r, warning=FALSE, message=FALSE}
+#vVar1s <- unique(df_vars$var1)
+#vVar2s <- unique(df_vars$var2)
+
+for (x in 1:nrow(df_unique_variabels_selected)) {
+  vVar1 <- df_unique_variabels_selected[x, "V1"]
+  vVar2 <- df_unique_variabels_selected[x, "V2"]
   
   if (x%%100 == 0) {
     print(round(x/number_var_comb,4))
     }
   
-  if (((vVar1 %in% vVar1s) & (vVar2 %in% vVar2s)) | ((vVar1 %in% vVar2s) & (vVar2 %in% vVar1s))) {
-    next
-  }
+  # if (((vVar1 %in% vVar1s) & (vVar2 %in% vVar2s)) | ((vVar1 %in% vVar2s) & (vVar2 %in% vVar1s))) {
+  #   next
+  # }
   
   df <- na.omit(df_profitPr[c(vVar1, vVar2, 'profit', 'date')])
   
@@ -204,11 +735,16 @@ for (x in 1:number_var_comb) {
 }
 ```
 
-
 # read df_vars file
 ```{r}
-# write.csv(x=df_vars, file="./data/df_vars.csv", row.names = F)
-# df_vars <- read.csv("./data/df_vars.csv")
+# write.csv(x=df_vars, file="./data/df_vars_RTS_10_14.csv", row.names = F)
+# write.csv(x=df_profitPr, file="./data/df_profitPr_RTS_10_14.csv", row.names = F)
+
+#write.csv(x=df_vars, file="./data/df_vars_SI_10_14.csv", row.names = F)
+#write.csv(x=df_profitPr, file="./data/df_profitPr_SI_10_14.csv", row.names = F)
+
+df_vars <- read.csv("./data/df_vars_RTS_10_14.csv")
+df_profitPr <- read.csv("./data/df_profitPr_RTS_10_14.csv")
 ```
 
 ```{r}
@@ -223,9 +759,61 @@ df_summary <- df_vars %>%
             'n_mean_profit_train' = mean(n_mean_profit_train, na.rm = T),
             'n_mean_profit_test' = mean(n_mean_profit_test, na.rm = T),
             n = n())
+```
 
+```{r}
+head(df_summary)
+```
+
+
+```{r}
 df_summary_filter <- df_summary %>%
-  filter(n == 36)
+  filter(n >= 36) %>%
+  mutate(p_up_diff = abs(p_up_0_test-p_up_0_train),
+         n_up_diff = abs(n_up_0_test-n_up_0_train))
+
+df_summary_filter_n <- df_summary %>%
+  filter(n >= 36) %>%
+  filter(n_up_0_test > 0.6 & n_up_0_train > 0.6) %>%
+  mutate(n_up_diff = abs(n_up_0_test-n_up_0_train)) %>%
+  arrange(n_up_diff) %>%
+  filter(n_up_diff < .1)
+
+n <- nrow(df_summary_filter_n)*0.2
+if (n < 50) {n <- nrow(df_summary_filter_n)}
+
+df_summary_filter_n <- df_summary_filter_n %>%
+  head(n) %>%
+  arrange(desc(n_up_0_test + n_up_0_train)) %>%
+  head(50)
+  
+
+df_summary_filter_p <- df_summary %>%
+  filter(n >= 36) %>%
+  filter(p_up_0_test > 0.6 & p_up_0_train > 0.6) %>%
+  mutate(p_up_diff = abs(p_up_0_test-p_up_0_train)) %>%
+  arrange(p_up_diff) %>%
+  filter(p_up_diff < .1) 
+
+n <- nrow(df_summary_filter_p)*0.2
+if (n < 50) {n <- nrow(df_summary_filter_p)}
+
+df_summary_filter_p <- df_summary_filter_p %>%
+  head(n) %>%
+  arrange(p_up_0_test + p_up_0_train) %>%
+  head(50)
+```
+
+```{r}
+ggplot(aes(x = n_up_diff), data = df_summary_filter_n) +
+  geom_histogram()
+```
+
+
+
+```{r}
+df_summary_filter <- df_summary %>%
+  filter(n >= 36)
 
 df_summary_filter$var1 <- as.character(df_summary_filter$var1)
 df_summary_filter$var2 <- as.character(df_summary_filter$var2)
@@ -240,13 +828,21 @@ df_top50vars_minProfit <- df_summary_filter %>%
   head(50) %>%
   select(var1, var2,n_mean_profit_test)
 
-df_topVars <- merge(df_top50vars_maxProfit,df_top50vars_minProfit, all = TRUE, by = c('var1','var2'))
+df_topVars <- merge(df_summary_filter_p,df_summary_filter_n, all = TRUE, by = c('var1','var2'))
+df_topVars %>%
+  select(var1, var2,n_mean_profit_test)
 ```
+
+```{r}
+df_profitPr$date <- ymd(df_profitPr$date)
+```
+
+
 
 # Vouting
 
 ```{r}
-for (x in 1600:2440) {
+for (x in 1300:2440) {
   date <- df_profitPr[x,"date"]
   #print(date)
   
@@ -310,7 +906,7 @@ for (x in 1600:2440) {
 vVar1 = 'profit_vote_n'
 vVar2 = 'profit_vote_p'
 
-for (x in 1700:2440) {
+for (x in 1400:2440) {
   
   date <- df_profitPr[x,"date"]
   df <- na.omit(df_profitPr[c(vVar1,vVar2,'profit','date')])
@@ -330,11 +926,11 @@ for (x in 1700:2440) {
 
 
 ```{r}
-df_profitPr$profit_by_day <- df_daily$profit
-df_profitPr$month <- df_daily$month 
-df_profitPr$year <- df_daily$year
+#df_profitPr$profit_by_day <- df_daily$profit
+#df_profitPr$month <- df_daily$month 
+#df_profitPr$year <- df_daily$year
 
-df_profitPr_count <- df_profitPr[1700:2440,]
+df_profitPr_count <- df_profitPr[1400:2440,]
 index <- (df_profitPr_count$profit_pred > 0.025)
 df_profitPr_count[,"trade_index"] <- 'NOT TRADE'
 df_profitPr_count[index,"trade_index"] <- 'TRADE'
@@ -377,7 +973,8 @@ ggplot() +
   scale_color_gradient2(midpoint=0, limit = c(-.3,.3), space = "Lab",
                         low="red", mid="white", high="green") +
   #geom_density2d(aes(x = 'profit_vote_n', y = 'profit_vote_p', alpha = 0.099), data = df_profitPr) +
-  xlab('profit_vote_n')+ylab('profit_vote_p')
+  xlab('profit_vote_n')+ylab('profit_vote_p') +
+  ggtitle('Profit25')
 ```
 
 ```{r}
@@ -387,33 +984,36 @@ ggplot() +
              shape=15, size = 2, data = df_profitPr) +
   scale_color_gradient2(midpoint=0, space = "Lab",
                         low="red", mid="white", high="green") +
-  xlab('profit_vote_n')+ylab('profit_vote_p')
+  xlab('profit_vote_n')+ylab('profit_vote_p') +
+  ggtitle('Pred_Profit25')
 ```
 
 ```{r}
 df_profitPr$profit_by_day <- df_daily$profit
 
 df_profitPr %>%
-  filter(year %in% c(2017,2018,2019,2020)) %>%
+  filter(year %in% c(2016,2017,2018,2019,2020)) %>%
 ggplot() +
   geom_point(aes(x = date, y = profit, color = profit_pred), 
              shape=15, size = 2) +
   scale_color_gradient2(midpoint=0, space = "Lab",
                         low="red", mid="white", high="green") +
-  xlab('date')+ylab('profit_MA25')
+  xlab('date')+ylab('profit_MA25') +
+  ggtitle('Pred_Profit25')
 ```
 
 ```{r}
 df_profitPr$profit_by_day <- df_daily$profit
 
 df_profitPr %>%
-  filter(year %in% c(2017,2018,2019,2020)) %>%
+  filter(year %in% c(2016,2017,2018,2019,2020)) %>%
 ggplot() +
   geom_point(aes(x = date, y = profit_by_day, color = profit_pred), 
              shape=15, size = 2) +
   scale_color_gradient2(midpoint=0, space = "Lab",
                         low="red", mid="white", high="green") +
-  xlab('profit_vote_n')+ylab('profit_vote_p')
+  xlab('profit_vote_n')+ylab('profit_vote_p')  +
+  ggtitle('Pred_Profit25')
 ```
 
 
@@ -424,7 +1024,8 @@ ggplot() +
              shape=15, size = 2, data = df_profitPr) +
   scale_color_gradient2(midpoint=0, space = "Lab",
                         low="red", mid="white", high="green") +
-  xlab('profit_pred')+ylab('profit')
+  xlab('profit_pred')+ylab('profit')  +
+  ggtitle('Pred_Profit25')
 ```
 
 
