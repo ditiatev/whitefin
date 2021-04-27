@@ -47,6 +47,20 @@ source("./scripts/create_X_y.R")
 source("./scripts/paste_summary.R")
 source("./scripts/create_vector_dates.R")
 source("./scripts/get_sample_date_index.R")
+source("./scripts/get_separate_index.r")
+source("./scripts/get_primary_summary.r")
+source("./scripts/get_vote_summary_parallel.r")
+source("./scripts/get_vote_train_summary_parallel.r")
+source("./scripts/create_lxy_train1_train2.r")
+source("./scripts/culculate_NPV.r")
+source("./scripts/get_topVars.r")
+source("./scripts/get_df_best_n_by_npv.r")
+source("./scripts/get_df_lev4.r")
+source("./scripts/get_cumulative_profit.r")
+
+
+
+
 
 source("./scripts/paste_primary_summary_parallel.r")
 source("./scripts/get_vote_summary_parallel.r")
@@ -54,46 +68,68 @@ source("./scripts/get_vote_summary_parallel.r")
 
 # Data
 ```{r}
-vStrategies <- c("RTS_14_18"); #vStrategies <- c("SI_10_14")
-df_profit <- get_WorkSet(vStrategies)
+# df_moex_previous   <- get_NormalDist(df_daily = df_profit, vColName = vColNames_moex,
+#                                       sliding_depth = 50, slidind_return = c(10,25,50))
+# df_moex_previous$date <- df_profit$date
 ```
 
-## MA
 ```{r}
-df_profit_forvard <- get_NormalDistForvard(df_daily = df_profit, vColName = 'profit', sliding_depth = 50)
+df_strategy <- read.csv("./data/strategy/strategy.csv",
+                        colClasses = c("factor","POSIXct","numeric","integer", "factor",
+                                       rep("numeric",6),rep("factor",3)))
+
+vStrategiesAll <- unique(df_strategy$strategy)
 ```
+
+
+
+```{r}
+df_strategy %>%
+  group_by(strategy) %>%
+  summarise(profit = mean(profit, rm.na = T)) %>%
+  arrange(desc(profit))
+```
+
+```{r}
+l_strategies <- list()
+```
+
 
 Previos MA by vColNames
 ```{r, warning=FALSE, message=FALSE}
+vStrategies <- c("SL_14_18_RTS_Int02",'SL_14_18_RTS_Int015',"SL_14_18_RTS_Int01","SL_14_18_RTS_Int005",'SL_14_18_RTS_Int001')
+
+for (vStrategy in vStrategies) {
+  df_profit <- get_WorkSet(vStrategy)
+
+df_profit_forvard <- get_NormalDistForvard(df_daily = df_profit, vColName = 'profit', sliding_depth = 50)
 vColNames_strategy <- colnames(df_profit)[c(3:4,6:11)]
 vColNames_moex     <- colnames(df_profit)[c(16:60)]
 df_profit_previous <- get_NormalDist(df_daily = df_profit, vColName = vColNames_strategy,
                                      sliding_depth = 50, slidind_return = c(10,25,50))
 df_profit_previous$date <- df_profit$date
-df_moex_previous   <- get_NormalDist(df_daily = df_profit, vColName = vColNames_moex,
-                                      sliding_depth = 50, slidind_return = c(10,25,50))
-df_moex_previous$date <- df_profit$date
-```
+
+df_profitPrAll <- merge(df_profit_previous,df_moex_previous, all.x = TRUE, by = "date")
+
+# vVariables
+vVariables <- unique(colnames(df_profitPrAll))
+vVariables <- vVariables[which(!(vVariables %in% c("date","profit","profit_by_day",
+                                                   "best_lev_profit_pred_next_10","profit_pred_next_10")))]
+df_unique_variabels <- get_df_unique_variabels(vVariables)
+df_unique_variabels <- df_unique_variabels[df_unique_variabels$calculated == 0,]
 
 
-```{r}
-df_profitPr <- merge(df_profit_previous,df_moex_previous, all.x = TRUE, by = "date")
+df_strategy_vote <- df_profit[,c('strategy','date','profit')]
 
-df_profitPr$profit <- df_profit_forvard$profit_mean_Next_25
+vProfitsNext <- c(20,25,30,35)
+for (vProfitNext in vProfitsNext) {
+  
+df_profitPr <- df_profitPrAll
+df_profitPr[,'profit'] <- df_profit_forvard[,paste0('profit_mean_Next_',vProfitNext)]
 df_profitPr$date <- ymd(df_profitPr$date)
 df_profitPr$profit_by_day <- df_profit$profit
 
-vVariables <- unique(colnames(df_profitPr))
-vVariables <- vVariables[which(!(vVariables %in% c("date","profit","profit_by_day")))]
-```
-
-
-# KNNSearch
-
-```{r}
-df_unique_variabels <- get_df_unique_variabels(vVariables)
 l_vars <- list()
-df_unique_variabels <- df_unique_variabels[df_unique_variabels$calculated == 0,]
 vSizeGroup <- 1000
 nGroups <- ceiling(nrow(df_unique_variabels)/vSizeGroup)
 vDates <- create_vector_dates()
@@ -112,47 +148,35 @@ for (n_group in 1:nGroups) {
                                                    df_profit = df_profitPr[index,])
   l_vars[length(l_vars)+1] <- list(convert_l_var_to_df_var(l_var = l_var_parallel))
   df_unique_variabels[startindex:endindex,'calculated'] <- 1
-  print(n_group/nGroups)
+  #print(n_group/nGroups)
 }
-```
 
 # Shoose varibels
+df_topVars <- get_topVars(l_vars = l_vars)
 
-```{r}
-source("./scripts/get_topVars.r")
-df_topVars <- get_topVars(l_vars = l_vars,
-                          quan_min_max = 0.5,
-                          quan_min_max_scater = 0.5)
-nrow(df_topVars)
-```
+####################################################
+# Vouting ##########################################
+####################################################
 
-# Vouting
-
-```{r}
-source("./scripts/get_separate_index.r")
-source("./scripts/get_primary_summary.r")
-source("./scripts/get_vote_summary_parallel.r")
-source("./scripts/get_vote_train_summary_parallel.r")
-source("./scripts/create_lxy_train1_train2.r")
-```
-
-```{r}
+##########
+##########
+## Lev1
+##########
 vVoteIndex <- which(df_profitPr$date >= vDates[1])
 l_vote_summary_parallel <- get_vote_summary_parallel(df_profitPr = df_profitPr,
                                                      df_topVars = df_topVars,
                                                      vVoteIndex = vVoteIndex,
-                                                     core = 3)
+                                                     core = 3,
+                                                     days_lag = (vProfitNext+1))
 df_vote_test_summary_parallel  <- as.data.frame(do.call(rbind,l_vote_summary_parallel))
 
 df_vote_train_summary_parallel <- get_vote_train_summary_parallel(df_profitPr = df_profitPr,
                                                                   df_topVars = df_topVars,
-                                                                  date = vDates[1])
+                                                                  date = vDates[1],
+                                                                  days_lag = (vProfitNext+1))
 
 df_vote_summary_parallel <- rbind(df_vote_train_summary_parallel,df_vote_test_summary_parallel)
-```
 
-
-```{r}
 df_profitPr <- merge(df_profitPr, df_vote_summary_parallel,
                         all.x = TRUE, by.x = c("date"), by.y = c("date"))
 
@@ -160,12 +184,17 @@ df_profitPr$profit_pred <- 0
 df_profitPr <- df_profitPr %>%
   arrange(date)
 rownames(df_profitPr) <- NULL
+##########
 
+
+##########
+##########
+## Lev2
+##########
+
+
+## TrainPred
 vVars = c('prob0_up','prob0_up_sd','scater_prob0_up')
-```
-
-# TrainPred
-```{r}
 lxy_train <- create_lxy_train1_train2(df_profitPr = df_profitPr,
                                       date = date, vVars = vVars)
 
@@ -186,34 +215,8 @@ df_train <- data.frame('date' = c(lxy_train$l_train_1$date_test,
 drops <- c('profit_pred')
 df_profitPr <- df_profitPr[ , !(names(df_profitPr) %in% drops)]
 df_profitPr <- merge(df_profitPr, df_train, all.x = TRUE, by.x = c("date"), by.y = c("date"))
-```
 
-
-```{r}
-# date <- vDates[1]
-# train_end_index <- which.min(abs(df_profitPr$date - date))+1
-# for (x in 365:train_end_index) {
-#   date <- df_profitPr[x,"date"]
-#   df <- df_profitPr[1:train_end_index,c(vVars,'profit','date')]
-#   df[sapply(df, is.nan)] <- NA
-#   df <- na.omit(df)
-#   index_train <- which(df$date < date)
-#   index_predict <- which(df$date == date)
-#   if (length(index_predict) == 0) {next}
-#     
-#   l <- create_X_y(df = df,
-#                   train_index = index_train,
-#                   test_index = index_predict,
-#                   vVars = vVars)
-#   
-#   knn_test  <- knn.reg(train=l$X_train, y=l$y_train, test=l$X_test, k=10)
-#   df_profitPr[x,'profit_pred'] <- knn_test[['pred']]
-# }
-```
-
-#TestPred
-```{r}
-#test_start_index <- which.min(abs(df_profitPr$date - ymd('20140101')))+1
+## TestPred
 date <- vDates[1]
 test_start_index <- which.min(abs(df_profitPr$date - date))+1
 for (x in test_start_index:nrow(df_profitPr)) {
@@ -233,134 +236,87 @@ for (x in test_start_index:nrow(df_profitPr)) {
   knn_test  <- knn.reg(train=l$X_train, y=l$y_train, test=l$X_test, k=10)
   df_profitPr[x,'profit_pred'] <- knn_test[['pred']]
 }
-```
+##########
 
-#### code
-```{r}
-source("./scripts/makePrColForStrategy.r")
+
+##########
+##########
+## Lev3
+##########
+
+
 df_profitPr$strategy <- "RTS_14_18"
 df_profit_lev3 <- makePrColForStrategy(df_strategy = df_profitPr, 
                                        vColNames = 'profit_pred', 
-                                       sliding_depth = 25)
+                                       sliding_depth = (vProfitNext-1))
 df_profit_lev3 <- cbind(df_profitPr[,c("date","profit","profit_by_day","profit_pred")],
                         df_profit_lev3)
 df_profit_lev3$profit_pred_Pr0 <- df_profit_lev3$profit_pred
-df_profit_lev3[,'profit_pred'] <- apply(df_profit_lev3[, paste0('profit_pred', "_Pr", 0:5)], 1, sum, na.rm = T)
-```
+df_profit_lev3$year <- year(df_profit_lev3$date)
+df_profit_lev3$month <- month(df_profit_lev3$date)
 
-
-
-
-
-# BestLevProfit
-```{r}
 df_train <- df_profit_lev3[which(df_profitPr$date < vDates[1]),]
-df_train$profit_pred <- df_train$profit_pred
-
-min_pred <- min(df_train$profit_pred, na.rm = T)
-max_pred <- max(df_train$profit_pred, na.rm = T)
-lev_profit_preds <- seq(from = min_pred, to = max_pred, length.out= 1000)
-
-max_profit_by_day <- 0
-max_lev_profit_pred <- 0
-
-for (lev_profit_pred in lev_profit_preds[1:999]) {
-  index <- which(df_train$profit_pred > lev_profit_pred)
-  profit_by_day <- sum(df_train[index,"profit_by_day"], na.rm = T)
-  if (profit_by_day > max_profit_by_day) {
-    max_profit_by_day <- profit_by_day
-    max_lev_profit_pred <- lev_profit_pred
-  }
+df_npv <- get_df_best_n_by_npv(df_train = df_train, vProfitNext = vProfitNext)
+for (x in 1:nrow(df_npv)) {
+  n        <- df_npv[x,"n"]
+  lev_prof <- df_npv[x,"lev_prof"]
+  npv      <- df_npv[x,"npv"]
+  
+  v_npv_Name   <- paste0('npv_profit_pred_next_',vProfitNext,'_n_',n)
+  v_Pr_n_Names <- paste0('profit_pred', "_Pr", 0:n)
+  df_profit_lev3[,'profit_pred'] <- apply(df_profit_lev3[,v_Pr_n_Names], 1, sum, na.rm = T)
+  
+  traid_index <- (df_profit_lev3$profit_pred > lev_prof)
+  df_strategy_vote[,v_npv_Name] <- 0
+  df_strategy_vote[traid_index,v_npv_Name] <- npv
 }
-max_profit_by_day
-max_lev_profit_pred
+##########
+}
+l_strategies[vStrategy] <- list(df_strategy_vote)
+}
+```
+
+```{r}
+# source("./scripts/paste_primary_summary.R")
+# undebug(paste_primary_summary)
+#   l_var_parallel <- paste_primary_summary(date = vDates[1],
+#                                           df_variabels = df_unique_variabels_selected,
+#                                           df_profit = df_profitPr[index,])
 ```
 
 
 ```{r}
-df_profitPr_count <- df_profit_lev3
-index <- which(df_profitPr_count$profit_pred > max_lev_profit_pred)
-df_profitPr_count[,"trade_index"] <- 'NOT TRADE'
-df_profitPr_count[index,"trade_index"] <- 'TRADE'
+df_lev4 <- get_df_lev4(l_strategies = l_strategies, 
+                       df_date_lev4 = df_profit[,c('date','profit')], 
+                       vTraid_index = 8)
+df_lev4 %>%
+  group_by(year) %>%
+  summarise(traid_index = mean(traid_index),
+            profit_model = sum(profit_model),
+            profit_avarage = sum(profit_avarage),
+            profit_best = sum(profit_SL_14_18_RTS_Int02))
 
-df_profitPr_count$year <- year(df_profitPr_count$date)
-df_profitPr_count$month <- month(df_profitPr_count$date)
+df_lev4 %>%
+  group_by(year >= 2017) %>%
+  summarise(traid_index = mean(traid_index),
+            profit_model = sum(profit_model),
+            profit_avarage = sum(profit_avarage),
+            profit_best = sum(profit_SL_14_18_RTS_Int02))
 
-df_profitPr_count %>%
-        mutate(profit_model = if_else(trade_index == 'TRADE', profit_by_day, 0)) %>%
-        summarise(total_profit = sum(profit_by_day), total_profit_model = sum(profit_model, na.rm = TRUE),
-                  mean_day_profit = mean(profit_by_day), mean_day_profit_model = mean(profit_model, na.rm = TRUE),
-                  k = abs((mean_day_profit_model-mean_day_profit)/mean_day_profit))
+```
 
-df_month_summary <- df_profitPr_count %>%
-        mutate(profit_model = if_else(trade_index == 'TRADE', profit_by_day, 0)) %>%
-        group_by(year, month) %>%
-        summarise(total_profit = sum(profit_by_day), total_profit_model = sum(profit_model, na.rm = TRUE),
-                  mean_day_profit = mean(profit_by_day), mean_day_profit_model = mean(profit_model, na.rm = TRUE),
-                  k = abs((mean_day_profit_model-mean_day_profit)/mean_day_profit))
-df_month_summary
+# MoneyCulculation
 
-df_year_summary <- df_profitPr_count %>%
-        mutate(profit_model = if_else(trade_index == 'TRADE', profit_by_day, 0)) %>%
-        group_by(year) %>%
-        summarise(total_profit = sum(profit_by_day), total_profit_model = sum(profit_model, na.rm = TRUE),
-                  mean_day_profit = mean(profit_by_day), mean_day_profit_model = mean(profit_model, na.rm = TRUE),
-                  k = abs((mean_day_profit_model-mean_day_profit)/mean_day_profit))
-df_year_summary
-
-df_profitPr_count %>%
-  ggplot() +
-  geom_point(aes(x = profit_pred, y = profit, color = profit_pred), 
-             shape=15, size = 2) +
-  scale_color_gradient2(midpoint=0, space = "Lab",
-                        low="red", mid="white", high="green") +
-  xlab('date')+ylab('profit_MA25') +
-  ggtitle('Pred_Profit25') +
-  geom_vline(xintercept = max_lev_profit_pred, alpha = 0.8, color = 'red')
-
-df_profitPr_count %>%
-  ggplot() +
-  geom_point(aes(x = date, y = profit, color = profit_pred), 
-             shape=15, size = 2) +
-  scale_color_gradient2(midpoint=0, space = "Lab",
-                        low="red", mid="white", high="green") +
-  xlab('date')+ylab('profit_MA25') +
-  ggtitle('Pred_Profit25') +
-  geom_vline(xintercept = max_lev_profit_pred, alpha = 0.8, color = 'red')
-
-money <- 100
-money_model <- 100
-rownames(df_profitPr_count) <- NULL
-k <- 1
-pr_year <- df_profitPr_count[1,'year']
-
-for (x in 1:nrow(df_profitPr_count)) {
-  if (df_profitPr_count[x,"date"] == (vDates[1]+2)) {
-    money <- 100
-    money_model <- 100
-  }
-    
-  if (df_profitPr_count[x,"trade_index"] == 'TRADE') {
-    money_model <- (k*money_model*df_profitPr_count[x,"profit_by_day"]/100+money_model)
-  } else {
-    money_model <- money_model
-  }
-  money <- (k*money*df_profitPr_count[x,"profit_by_day"]/100+money)
-  
-  df_profitPr_count[x,'money_model'] <- money_model
-  df_profitPr_count[x,'money'] <- money
-  pr_year <- df_profitPr_count[x,'year']
-}
-
-ymax <- max(c(df_profitPr_count[,'money_model'],df_profitPr_count[,'money']), na.rm = T)
-gg_train <- df_profitPr_count %>%
+```{r}
+ymax <- max(c(df_lev4[,'money_model'],df_lev4[,'money']), na.rm = T)
+gg_train <- df_lev4 %>%
   filter(date < vDates[1]) %>%
   ggplot() +
   geom_point(aes(x = date, y = money), color = 'red', alpha = 0.2) +
   geom_point(aes(x = date, y = money_model), color = 'green', alpha = 0.2) +
   ggtitle('Train')
 
-gg_test <- df_profitPr_count %>%
+gg_test <- df_lev4 %>%
   filter(date >= vDates[1]) %>%
   ggplot() +
   geom_point(aes(x = date, y = money), color = 'red', alpha = 0.2) +
@@ -370,15 +326,20 @@ gg_test <- df_profitPr_count %>%
 grid.arrange(gg_train, gg_test, ncol = 2)
 ```
 
+
 ```{r}
-df_year_summary
+get_cumulative_profit(df_lev4 = df_lev4, k = 1)
 ```
 
 
 
 ```{r}
+df_money_by_year <- get_cumulative_profit(df_lev4 = df_lev4)
+df_money_by_year
+train_index <- df_month_summary$year >= 2017
+
 S = 100000
-profit <- df_year_summary$total_profit
+profit <- df_money_by_year$money
 m_0 = mean(profit)
 s2_0 = var(profit)
 n_0 = length(profit)
@@ -388,7 +349,7 @@ phi = rgamma(S, v_0/2, s2_0*v_0/2)
 sigma = 1/sqrt(phi)
 mu = rnorm(S, mean=m_0, sd=sigma/(sqrt(n_0)))
 Y = rnorm(S, mu, sigma)
-Years <- 1/(length(which(Y < -5))/length(Y))
+Years <- 1/(length(which(Y < 0))/length(Y))
 sd_profit <- sd(profit)*Years
 
 df <- data.frame("NPV" = rnorm(S, mu, sigma)*Years
@@ -410,7 +371,7 @@ gg_total_profit <- ggplot(data = df) +
         ggtitle(paste0("NPV distribution with mean = ",round(mean(df$NPV),0)))
 
 S = 100000
-profit <- df_year_summary$total_profit_model
+profit <- df_money_by_year$money_model
 m_0 = mean(profit)
 s2_0 = var(profit)
 n_0 = length(profit)

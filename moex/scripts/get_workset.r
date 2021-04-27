@@ -89,6 +89,7 @@ get_WorkSet <- function(vStrategies = NaN) {
         ############################################################
         
         df_daily <- merge(df_daily, df_index_moexRTS, by.x = "date", by.y = "tradedate", all.x = TRUE)
+        colnames(df_daily) <- gsub("\\.", "_",colnames(df_daily))
         
         df_daily
         

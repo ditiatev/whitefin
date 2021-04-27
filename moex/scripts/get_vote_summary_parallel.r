@@ -1,11 +1,13 @@
 get_vote_summary_parallel <- function(df_profitPr = df_profitPr,
                                       df_topVars = df_topVars,
                                       vVoteIndex = vVoteIndex,
-                                      core = 3) {
+                                      core = 3,
+                                      days_lag = days_lag) {
         
         get_vote_summary <- function(df_profitPr = df_profitPr,
                                      df_topVars = df_topVars,
-                                     vVoteIndex = vVoteIndex) {
+                                     vVoteIndex = vVoteIndex,
+                                     days_lag = days_lag) {
                 
                 create_df_vote <- function() {
                         df_vote <- data.frame("var1" = "var1",
@@ -79,11 +81,12 @@ get_vote_summary_parallel <- function(df_profitPr = df_profitPr,
                 
                 create_lxy <- function(df_profitPr = df_profitPr,
                                        date = date,
-                                       vVars = vVars) {
+                                       vVars = vVars,
+                                       days_lag = days_lag) {
                         
                         df <- na.omit(df_profitPr[c(vVars,'profit','date')])
                         
-                        index_train <- df$date < (date - 26)
+                        index_train <- df$date < (date - days_lag)
                         index_predict <- which(df$date == date)
                         
                         if (length(index_predict) == 0) {return(NA)}
@@ -227,7 +230,8 @@ get_vote_summary_parallel <- function(df_profitPr = df_profitPr,
                 
                 get_df_vote_m <- function(df_profitPr = df_profitPr,
                                           df_topVars = df_topVars,
-                                          x = x) {
+                                          x = x,
+                                          days_lag = days_lag) {
                         
                         date <- df_profitPr[x,"date"]
                         df_vote <- create_df_vote()
@@ -237,7 +241,8 @@ get_vote_summary_parallel <- function(df_profitPr = df_profitPr,
                                 vVars <- create_vVars(df_topVars = df_topVars, index = index)
                                 
                                 l <- create_lxy(df_profitPr = df_profitPr,
-                                                date = date, vVars = vVars)
+                                                date = date, vVars = vVars,
+                                                days_lag = days_lag)
                                 if (is.na(l)) {next}
                                 
                                 df_vote[index,"var1"] <- vVars[1]
@@ -276,7 +281,8 @@ get_vote_summary_parallel <- function(df_profitPr = df_profitPr,
                         x <- vVoteIndex[z]
                         df_vote_m <- get_df_vote_m(df_profitPr = df_profitPr,
                                                    df_topVars = df_topVars,
-                                                   x = x)
+                                                   x = x,
+                                                   days_lag = days_lag)
                         df_vote_m
                 }
                 
@@ -286,7 +292,8 @@ get_vote_summary_parallel <- function(df_profitPr = df_profitPr,
         doParallel::registerDoParallel(cl)
         l_vote_summary <- tryCatch(get_vote_summary(df_profitPr = df_profitPr,
                                                     df_topVars = df_topVars,
-                                                    vVoteIndex = vVoteIndex), 
+                                                    vVoteIndex = vVoteIndex,
+                                                    days_lag = days_lag), 
                                    error = function(e) print(e))
         parallel::stopCluster(cl)
         l_vote_summary
