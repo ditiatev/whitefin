@@ -99,6 +99,8 @@ Previos MA by vColNames
 ```{r, warning=FALSE, message=FALSE}
 vStrategies <- c("SL_14_18_RTS_Int02",'SL_14_18_RTS_Int015',"SL_14_18_RTS_Int01","SL_14_18_RTS_Int005",'SL_14_18_RTS_Int001')
 
+l_str_save <- list()
+
 for (vStrategy in vStrategies) {
   df_profit <- get_WorkSet(vStrategy)
 
@@ -129,6 +131,10 @@ df_profitPr[,'profit'] <- df_profit_forvard[,paste0('profit_mean_Next_',vProfitN
 df_profitPr$date <- ymd(df_profitPr$date)
 df_profitPr$profit_by_day <- df_profit$profit
 
+##########
+##########
+## Vars
+##########
 l_vars <- list()
 vSizeGroup <- 1000
 nGroups <- ceiling(nrow(df_unique_variabels)/vSizeGroup)
@@ -288,7 +294,7 @@ l_strategies[vStrategy] <- list(df_strategy_vote)
 ```{r}
 df_lev4 <- get_df_lev4(l_strategies = l_strategies, 
                        df_date_lev4 = df_profit[,c('date','profit')], 
-                       vTraid_index = 8)
+                       vTraid_index = 6)
 df_lev4 %>%
   group_by(year) %>%
   summarise(traid_index = mean(traid_index),
@@ -303,6 +309,10 @@ df_lev4 %>%
             profit_avarage = sum(profit_avarage),
             profit_best = sum(profit_SL_14_18_RTS_Int02))
 
+get_cumulative_profit(df_lev4 = df_lev4, k = 1)
+get_cumulative_profit(df_lev4 = df_lev4, k = 2)
+get_cumulative_profit(df_lev4 = df_lev4, k = 3)
+get_cumulative_profit(df_lev4 = df_lev4, k = 10)
 ```
 
 # MoneyCulculation
@@ -328,7 +338,7 @@ grid.arrange(gg_train, gg_test, ncol = 2)
 
 
 ```{r}
-get_cumulative_profit(df_lev4 = df_lev4, k = 1)
+
 ```
 
 
