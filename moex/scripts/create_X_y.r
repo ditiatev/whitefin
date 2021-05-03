@@ -1,14 +1,15 @@
 create_X_y <- function(df = df, 
                        train_index = train_index, 
                        test_index = test_index, 
-                       vVar1 = vVar1, 
-                       vVar2 = vVar2,
+                       vVars = vVars,
                        normalization = TRUE) {
         
-        X_train <- df[train_index,c(vVar1,vVar2)]
+        X_train <- df[train_index,vVars]
         y_train <- df[train_index,c('profit')]
-        X_test  <- df[test_index,c(vVar1,vVar2)]
+        date_train <- df[train_index,c('date')]
+        X_test  <- df[test_index,vVars]
         y_test  <- df[test_index,c('profit')]
+        date_test  <- df[test_index,c('date')]
         
         if (normalization == TRUE) {
                 
@@ -37,8 +38,10 @@ create_X_y <- function(df = df,
         
         l <- list('X_train' = X_train,
                   'y_train' = y_train,
+                  'date_train' = date_train,
                   'X_test' = X_test,
-                  'y_test' = y_test)
+                  'y_test' = y_test,
+                  'date_test' = date_test)
         
         return(l)
 }
