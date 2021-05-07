@@ -1,14 +1,11 @@
 get_vote_summary_parallel <- function(df_profitPr = df_profitPr,
-                                      df_topVars = df_topVars,
-                                      vVoteIndex = vVoteIndex,
-                                      core = 3,
-                                      days_lag = days_lag, 
+                                      l_str_save = l_str_save,
+                                      core = 3, 
                                       paralleling = TRUE) {
         
         get_vote_summary <- function(df_profitPr = df_profitPr,
-                                     df_topVars = df_topVars,
-                                     vVoteIndex = vVoteIndex,
-                                     days_lag = days_lag) {
+                                     l_str_save = l_str_save,
+                                     vVoteIndex = vVoteIndex) {
                 
                 create_df_vote <- function() {
                         df_vote <- data.frame("var1" = "var1",
@@ -234,7 +231,8 @@ get_vote_summary_parallel <- function(df_profitPr = df_profitPr,
                 get_df_vote_m <- function(df_profitPr = df_profitPr,
                                           df_topVars = df_topVars,
                                           x = x,
-                                          days_lag = days_lag) {
+                                          days_lag = days_lag,
+                                          MA = topVars_name) {
                         
                         date <- df_profitPr[x,"date"]
                         df_vote <- create_df_vote()
@@ -261,8 +259,11 @@ get_vote_summary_parallel <- function(df_profitPr = df_profitPr,
                                 df_vote[index,"k_up"] <- scater_prob0_summary["k_up"]
                         }
                         
+                        df_vote[sapply(df_vote, is.infinite)] <- NA
+                        
                         df_vote_m <- df_vote %>%
-                                summarise(prob0_up_sd = sd(prob0_up, na.rm = T),
+                                summarise(MA = MA,
+                                          prob0_up_sd = sd(prob0_up, na.rm = T),
                                           prob0_down_sd = sd(prob0_down, na.rm = T),
                                           scater_prob0_up = sum(k_up*prob0_up, na.rm = T)/sum(k_up, na.rm = T),
                                           scater_prob0_down = sum(k_down*prob0_down, na.rm = T)/sum(k_down, na.rm = T),
@@ -277,26 +278,41 @@ get_vote_summary_parallel <- function(df_profitPr = df_profitPr,
                 
                 ###
                 ###
+                topVars_names <- names(l_str_save$l_topVars)
+                len = length(topVars_names)
+                
+                
                 ###
                 if (paralleling == TRUE) {
-                len = length(vVoteIndex)
                 foreach(z = 1:len, .packages="dplyr") %dopar% {
-                        x <- vVoteIndex[z]
+                        topVars_name <- topVars_names[z]
+                        
+                        df_topVars <- l_str_save$l_topVars[topVars_name][[1]]
+                        df_profitPr[,'profit'] <- l_str_save$df_profit_forvard[,paste0('profit_mean_Next_',topVars_name)]
+                        days_lag <- as.numeric(topVars_name)+1
+                        
                         df_vote_m <- get_df_vote_m(df_profitPr = df_profitPr,
                                                    df_topVars = df_topVars,
-                                                   x = x,
-                                                   days_lag = days_lag)
-                        df_vote_m
+                                                   x = vVoteIndex,
+                                                   days_lag = days_lag,
+                                                   MA = topVars_name)
+                        #df_vote_m['MA'] <- topVars_name
                         }
                 } else {
-                        len = length(vVoteIndex)
                         l_vote_m <- list()
                         for(z in 1:len) {
-                                x <- vVoteIndex[z]
+                                topVars_name <- topVars_names[z]
+                                
+                                df_topVars <- l_str_save$l_topVars[topVars_name][[1]]
+                                df_profitPr[,'profit'] <- l_str_save$df_profit_forvard[,paste0('profit_mean_Next_',topVars_name)]
+                                days_lag <- as.numeric(topVars_name)+1
+                                
                                 df_vote_m <- get_df_vote_m(df_profitPr = df_profitPr,
                                                            df_topVars = df_topVars,
-                                                           x = x,
-                                                           days_lag = days_lag)
+                                                           x = vVoteIndex,
+                                                           days_lag = days_lag,
+                                                           MA = topVars_name)
+                                
                                 l_vote_m[z] <- list(df_vote_m)
                         }
                         l_vote_m
@@ -304,22 +320,21 @@ get_vote_summary_parallel <- function(df_profitPr = df_profitPr,
                 
         }
         
+       vVoteIndex <- which(df_profitPr$date == (l_str_save$work_date[1])) 
         if (paralleling == TRUE) {
         
         cl <- parallel::makeCluster(core)
         doParallel::registerDoParallel(cl)
         l_vote_summary <- tryCatch(get_vote_summary(df_profitPr = df_profitPr,
-                                                    df_topVars = df_topVars,
-                                                    vVoteIndex = vVoteIndex,
-                                                    days_lag = days_lag), 
+                                                    l_str_save = l_str_save,
+                                                    vVoteIndex = vVoteIndex), 
                                    error = function(e) print(e))
         parallel::stopCluster(cl)
         
         } else {
                 l_vote_summary <- get_vote_summary(df_profitPr = df_profitPr,
-                                                   df_topVars = df_topVars,
-                                                   vVoteIndex = vVoteIndex,
-                                                   days_lag = days_lag)
+                                                   l_str_save = l_str_save,
+                                                   vVoteIndex = vVoteIndex)
                 }
         
         df_vote_summary  <- as.data.frame(do.call(rbind,l_vote_summary))

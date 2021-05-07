@@ -1,7 +1,8 @@
 paste_primary_summary_parallel <- function(date,
                                            df_variabels,
                                            df_profit,
-                                           core = 3) {
+                                           core = 3,
+                                           paralleling = TRUE) {
         paste_primary_summary <- function(date,
                                           df_variabels,
                                           df_profit) {
@@ -128,6 +129,7 @@ paste_primary_summary_parallel <- function(date,
                 ###
                 ###
                 len = nrow(df_variabels)
+                if (paralleling == TRUE) {
                 #for (z in 1:len) {
                 foreach(z = 1:len, .packages="dplyr") %dopar% {
                         ps = paste_primary_summary(z = z,
@@ -135,8 +137,20 @@ paste_primary_summary_parallel <- function(date,
                                                    df_profit = df_profit)
                         ps
                 }
+                } else {
+                        l_ps <- list()
+                        for (z in 1:len) {
+                                ps = paste_primary_summary(z = z,
+                                                           df_variabels = df_variabels,
+                                                           df_profit = df_profit)
+                                l_ps[as.character(z)] <- ps
+                        }
+                        l_ps
+                        
+                }
         }
         
+        if (paralleling == TRUE) {
         cl <- parallel::makeCluster(core)
         doParallel::registerDoParallel(cl)
         l_var <- tryCatch(paste_primary_summary(date = date,
@@ -145,4 +159,10 @@ paste_primary_summary_parallel <- function(date,
                           error = function(e) print(e))
         parallel::stopCluster(cl)
         l_var
+        } else {
+                l_var <- paste_primary_summary(date = date,
+                                               df_variabels = df_variabels,
+                                               df_profit = df_profit)
+                l_var
+                }
 }

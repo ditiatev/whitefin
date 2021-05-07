@@ -57,13 +57,7 @@ source("./scripts/get_topVars.r")
 source("./scripts/get_df_best_n_by_npv.r")
 source("./scripts/get_df_lev4.r")
 source("./scripts/get_cumulative_profit.r")
-
-
-
-
-
 source("./scripts/paste_primary_summary_parallel.r")
-source("./scripts/get_vote_summary_parallel.r")
 ```
 
 # Data
@@ -94,18 +88,13 @@ df_strategy %>%
 l_strategies <- list()
 ```
 
-```{r}
-
-head(df_profit_total[df_profit_total$date > last_work_date,],1)
-
-```
 
 Previos MA by vColNames
 ```{r, warning=FALSE, message=FALSE}
 vStrategies <- c("SL_14_18_RTS_Int02",'SL_14_18_RTS_Int015',"SL_14_18_RTS_Int01","SL_14_18_RTS_Int005",'SL_14_18_RTS_Int001')
 
 vStrategy <- 'SL_18_22_RTS_Int003'
-start_date <- dmy('01032020')
+start_date <- dmy('01012017')
 df_profit_total <- get_WorkSet(vStrategy)
 df_profit_total <- df_profit_total[,1:11]
 
@@ -115,7 +104,11 @@ df_profit_total <- df_profit_total[,1:11]
   # df_profit <- get_WorkSet(vStrategy)
 
 l_str_save <- list()
+```
 
+
+```{r, warning=FALSE, message=FALSE}
+# start
 if (is.null(l_str_save['stratagy_name'][[1]])) {
   l_str_save['stratagy_name'] <- vStrategy
 }
@@ -142,6 +135,7 @@ if (is.null(l_str_save['df_profit'][[1]])) {
   df_profit_forvard <- get_NormalDistForvard(df_daily = df_profit, 
                                              vColName = 'profit', 
                                              sliding_depth = 50)[,1:49]
+  df_profit_forvard$date <- df_profit$date
   l_str_save['df_profit_forvard'] <- list(df_profit_forvard)
   
   # date update
@@ -169,6 +163,7 @@ if (is.null(l_str_save['df_profit'][[1]])) {
   df_profit_forvard <- get_NormalDistForvard(df_daily = tail(df_profit,51),
                                              vColName = 'profit', 
                                              sliding_depth = 50)[,1:49]
+  df_profit_forvard$date <- tail(df_profit,51)$date
   n_row <- nrow(l_str_save$df_profit_forvard)
   df_profit_forvard <- rbind(l_str_save$df_profit_forvard[1:(n_row-50),],df_profit_forvard)
   l_str_save['df_profit_forvard'] <- list(df_profit_forvard)
@@ -178,7 +173,7 @@ if (is.null(l_str_save['df_profit'][[1]])) {
   l_str_save['work_date'] <- list(work_date)
 }
 
-df_profitPrAll <- do.call(cbind,list(l_str_save$df_profit[,c("date","profit")],
+df_profitPrAll <- do.call(cbind,list(data.frame('profit' = l_str_save$df_profit$profit),
                                      l_str_save$df_profit_previous,
                                      l_str_save$df_profit_forvard))
 
@@ -192,6 +187,7 @@ df_profitPrAll <- merge(df_profitPrAll, df_moex_previous, by = 'date', all.x = T
 
 vVariables <- unique(c(colnames(l_str_save$df_profit_previous),
                        colnames(df_moex_previous)))
+vVariables <- vVariables[which(vVariables != 'date')]
 
 if (is.null(l_str_save['vVariables'][[1]])) {
   l_str_save['vVariables'] <- list(vVariables)
@@ -200,13 +196,14 @@ if (is.null(l_str_save['vVariables'][[1]])) {
   l_str_save['newVariables'] <- list(newVariables)
 }
 
+##########
 
 ##########
 ##########
 ## df_topVars
 ##########
-if (!is.null(l_str_save['l_topVars'][[1]])) {
-  df_unique_variabels <- get_df_unique_variabels(vVariables[1:50])
+if (is.null(l_str_save['l_topVars'][[1]])) {
+  df_unique_variabels <- get_df_unique_variabels(vVariables)
   df_profit_forvard <- l_str_save$df_profit_forvard
   topVars_date <- start_date
   l_topVars <- list()
@@ -231,10 +228,11 @@ if (!is.null(l_str_save['l_topVars'][[1]])) {
                                 endindex <- nrow(df_unique_variabels)
                         }
                         df_unique_variabels_selected <- df_unique_variabels[startindex:endindex,]
-                        
+                        #undebug(paste_primary_summary_parallel)
                         l_var_parallel <- paste_primary_summary_parallel(date = topVars_date,
                                                                          df_variabels = df_unique_variabels_selected,
-                                                                         df_profit = df_profitPr[index,])
+                                                                         df_profit = df_profitPr[index,],
+                                                                         paralleling = TRUE)
                         l_vars[length(l_vars)+1] <- list(convert_l_var_to_df_var(l_var = l_var_parallel))
                         df_unique_variabels[startindex:endindex,'calculated'] <- 1
                 }
@@ -251,76 +249,190 @@ if (!is.null(l_str_save['l_topVars'][[1]])) {
 ##########
 ## Lev1
 ##########
-l_lev1 <- list()
-### TRAIN
-l_lev1_train <- list()
-for (topVars_name in names(l_str_save$l_topVars)) {
-  df_topVars <- l_str_save$l_topVars[topVars_name][[1]]
-  days_lag <- as.numeric(topVars_name)+1
-  
-  df_profitPr <- df_profitPrAll
-  df_profitPr[,'profit'] <- df_profit_forvard[,paste0('profit_mean_Next_',topVars_name)]
-  
-  df_vote_train_summary_parallel <- get_vote_train_summary_parallel(df_profitPr = df_profitPr,
-                                                                    df_topVars = df_topVars,
-                                                                    date = l_str_save$topVars_date[1],
-                                                                    days_lag = days_lag)
-  l_lev1_train[topVars_name] <- list(df_vote_train_summary_parallel)
-}
-  l_lev1['train'] <- list(l_lev1_train)
-  
-### TEST
-l_lev1_test <- list()
-  for (topVars_name in names(l_str_save$l_topVars)) {
-  df_topVars <- l_str_save$l_topVars[topVars_name][[1]]
-  days_lag <- as.numeric(topVars_name)+1
-  
-  df_profitPr <- df_profitPrAll
-  df_profitPr[,'profit'] <- df_profit_forvard[,paste0('profit_mean_Next_',topVars_name)]
-  
-  vVoteIndex <- which(df_profitPr$date == (l_str_save$work_date[1]))
-  undebug(get_vote_summary_parallel)
-  df_vote_test_summary_parallel <- get_vote_summary_parallel(df_profitPr = df_profitPr,
-                                                             df_topVars = df_topVars,
-                                                             vVoteIndex = vVoteIndex,
-                                                             core = 3,
-                                                             days_lag = days_lag,
-                                                             paralleling = FALSE)
-  l_lev1_test[topVars_name] <- list(df_vote_test_summary_parallel)
+if (is.null(l_str_save['l_lev1'][[1]])) {
+        l_lev1 <- list()
+        ### TRAIN
+        l_lev1_train <- list()
+        for (topVars_name in names(l_str_save$l_topVars)) {
+                df_topVars <- l_str_save$l_topVars[topVars_name][[1]]
+                days_lag <- as.numeric(topVars_name)+1
+                
+                df_profitPr <- df_profitPrAll
+                df_profitPr[,'profit'] <- df_profit_forvard[,paste0('profit_mean_Next_',topVars_name)]
+                
+                df_vote_train_summary_parallel <- get_vote_train_summary_parallel(df_profitPr = df_profitPr,
+                                                                                  df_topVars = df_topVars,
+                                                                                  date = l_str_save$topVars_date[1],
+                                                                                  days_lag = days_lag)
+                l_lev1_train[topVars_name] <- list(df_vote_train_summary_parallel)
+        }
+        
+        
+        # empty space at the end of train periods
+        work_date <- l_str_save$work_date
+        last_train_date <- max(l_lev1_train[[tail(names(l_lev1_train),1)]]$date)
+        last_train_date_index <- which((l_str_save$df_profit$date >= last_train_date) &
+                                         (l_str_save$df_profit$date < work_date))
+        
+        l_lev1_train_empty_date <- list()
+        for (train_date_index in last_train_date_index) {
+          l_str_save$work_date <- l_str_save$df_profit[train_date_index,"date"]
+          l_lev1_train_empty_date[as.character(train_date_index)] <- 
+            list(get_vote_summary_parallel(df_profitPr = df_profitPrAll, l_str_save = l_str_save))
+          }
+        df_lev1_train_empty_date <- do.call(rbind,l_lev1_train_empty_date)
+        l_str_save$work_date <- work_date
+        
+        # merge train
+        for (name_lev1 in names(l_lev1_train) ) {
+          df_lev1_train <- l_lev1_train[[name_lev1]]
+          col_names <- colnames(df_lev1_train)
+          index_empty <- which(df_lev1_train_empty_date$MA == name_lev1)
+          df_lev1_train_empty <- df_lev1_train_empty_date[index_empty,col_names]
+          
+          index_full <- setdiff(as.character(df_lev1_train$date), as.character(df_lev1_train_empty$date))
+          rownames(df_lev1_train) <- as.character(df_lev1_train$date)
+          df_lev1_train <- rbind(df_lev1_train[index_full,],df_lev1_train_empty)
+          l_lev1_train[[name_lev1]] <- df_lev1_train
+        }
+        l_lev1['train'] <- list(l_lev1_train)
+        
+        ### TEST
+        undebug(get_vote_summary_parallel)
+        l_lev1_test <- list(get_vote_summary_parallel(df_profitPr = df_profitPrAll,
+                                                      l_str_save = l_str_save, paralleling = FALSE))
+        l_lev1['test'] <- l_lev1_test
+        
+        ### UPDATE
+        l_str_save['l_lev1'] <- list(l_lev1)
+} else {
+  last_test_date <- max(l_str_save$l_lev1$test$date)
+  if (l_str_save$work_date != last_test_date) {
+    df_lev1_test <- get_vote_summary_parallel(df_profitPr = df_profitPrAll,
+                                              l_str_save = l_str_save)
+    l_str_save$l_lev1$test <- rbind(l_str_save$l_lev1$test,df_lev1_test)
   }
-l_lev1['test'] <- list(l_lev1_test)
-  
-l_str_save['l_lev1'] <- list(l_lev1)
-  
-vVoteIndex <- which(df_profitPr$date == (l_str_save$work_date[1]-71))
-vVoteIndex
-df_vote_test_summary_parallel <- get_vote_summary_parallel(df_profitPr = df_profitPr,
-                                                           df_topVars = df_topVars,
-                                                           vVoteIndex = vVoteIndex,
-                                                           core = 3,
-                                                           days_lag = (vProfitNext+1))
-df_vote_test_summary_parallel
-```
+}
 
-
-```{r, warning=FALSE, message=FALSE}
-df_vote_train_summary_parallel <- get_vote_train_summary_parallel(df_profitPr = df_profitPr,
-                                                                  df_topVars = df_topVars,
-                                                                  date = vDates[1],
-                                                                  days_lag = (vProfitNext+1))
-
-df_vote_summary_parallel <- rbind(df_vote_train_summary_parallel,df_vote_test_summary_parallel)
-
-df_profitPr <- merge(df_profitPr, df_vote_summary_parallel,
-                        all.x = TRUE, by.x = c("date"), by.y = c("date"))
-
-df_profitPr$profit_pred <- 0
-df_profitPr <- df_profitPr %>%
-  arrange(date)
-rownames(df_profitPr) <- NULL
 ##########
 
+##########
+##########
+## Lev2
+##########
+if (is.null(l_str_save['l_lev2'][[1]])) {
+        l_lev2 <- list()
+        # train
+        l_lev2_train <- list()
+        for (lev1_name in names(l_str_save$l_lev1$train)) {
+                # df
+                df_lev1 <- l_str_save$l_lev1$train[lev1_name][[1]]
+                v_profit_next_name <- paste0('profit_mean_Next_',lev1_name)
+                df_forvard <- l_str_save$df_profit_forvard[,c("date",v_profit_next_name)]
+                names(df_forvard) <- c('date','profit')
+                df_lev1 <- merge(df_lev1, df_forvard, by = 'date', all.x = T)
+                
+                ## TrainPred
+                vVars = c('prob0_up','prob0_up_sd','scater_prob0_up')
+                undebug(create_lxy_train1_train2)
+                lxy_train <- create_lxy_train1_train2(df_profitPr = df_lev1,
+                                                      date = l_str_save$topVars_date, 
+                                                      vVars = vVars)
+                
+                profit_pred_1  <- knn.reg(train=lxy_train$l_train_1$X_train,
+                                          y=lxy_train$l_train_1$y_train,
+                                          test=lxy_train$l_train_1$X_test,
+                                          k=10)[['pred']]
+                profit_pred_2  <- knn.reg(train=lxy_train$l_train_2$X_train,
+                                          y=lxy_train$l_train_2$y_train,
+                                          test=lxy_train$l_train_2$X_test,
+                                          k=10)[['pred']]
+                
+                df_lev2_train <- data.frame('date' = c(lxy_train$l_train_1$date_test,
+                                                       lxy_train$l_train_2$date_test),
+                                            'profit_pred' = c(profit_pred_1,
+                                                              profit_pred_2))
+                l_lev2_train[lev1_name] <- list(df_lev2_train)
+                
+        }
+        l_lev2['train'] <- list(l_lev2_train)
+        
+        # test
+        l_lev2_test <- list()
+        for (lev1_name in names(l_str_save$l_lev1$train)) {
+                # df
+                df_lev1_train <- l_str_save$l_lev1$train[lev1_name][[1]]
+                df_lev1_test  <- l_str_save$l_lev1$test
+                index_test_lev1 <- which(df_lev1_test$MA == lev1_name)
+                df_lev1_test <- df_lev1_test[index_test_lev1,c(2:8)]
+                df_lev1 <- rbind(df_lev1_train,df_lev1_test)
+                vVars = c('prob0_up','prob0_up_sd','scater_prob0_up')
+                df_lev1 <- df_lev1[,c('date',vVars)]
+                v_profit_next_name <- paste0('profit_mean_Next_',lev1_name)
+                df_forvard <- l_str_save$df_profit_forvard[,c("date",v_profit_next_name)]
+                names(df_forvard) <- c('date','profit')
+                df_lev1 <- merge(df_lev1, df_forvard, by = 'date', all.x = T)
+                df_lev1[sapply(df_lev1, is.nan)] <- NA
+                df_lev1[sapply(df_lev1, is.infinite)] <- NA
+                # prediction
+                index_train <- ((df_lev1$date < l_str_save$work_date) & (complete.cases(df_lev1)))
+                index_predict <- which((df_lev1$date == l_str_save$work_date) & (complete.cases(df_lev1[,c(vVars)])))
+                undebug(create_X_y)
+                l <- create_X_y(df = df_lev1,
+                                train_index = index_train,
+                                test_index = index_predict,
+                                vVars = vVars)
+                
+                profit_pred  <- knn.reg(train=l$X_train, y=l$y_train, test=l$X_test, k=10)[['pred']]
+                l_lev2_test[as.character(lev1_name)] <- list(data.frame('date' = l$date_test,
+                                                                        'profit_pred' = profit_pred,
+                                                                        'MA' = as.character(lev1_name)))
+                
+        }
+        df_lev2_test <- do.call(rbind,l_lev2_test)
+        l_lev2['test'] <- list(df_lev2_test)
+        
+        l_str_save['l_lev2'] <- list(l_lev2)
+} else {
+        # test
+        l_lev2_test <- list()
+        for (lev1_name in names(l_str_save$l_lev1$train)) {
+                # df
+                df_lev1_train <- l_str_save$l_lev1$train[lev1_name][[1]]
+                df_lev1_test  <- l_str_save$l_lev1$test
+                index_test_lev1 <- which(df_lev1_test$MA == lev1_name)
+                df_lev1_test <- df_lev1_test[index_test_lev1,c(2:8)]
+                df_lev1 <- rbind(df_lev1_train,df_lev1_test)
+                vVars = c('prob0_up','prob0_up_sd','scater_prob0_up')
+                df_lev1 <- df_lev1[,c('date',vVars)]
+                v_profit_next_name <- paste0('profit_mean_Next_',lev1_name)
+                df_forvard <- l_str_save$df_profit_forvard[,c("date",v_profit_next_name)]
+                names(df_forvard) <- c('date','profit')
+                df_lev1 <- merge(df_lev1, df_forvard, by = 'date', all.x = T)
+                df_lev1[sapply(df_lev1, is.nan)] <- NA
+                df_lev1[sapply(df_lev1, is.infinite)] <- NA
+                # prediction
+                index_train <- ((df_lev1$date < l_str_save$work_date) & (complete.cases(df_lev1)))
+                index_predict <- which((df_lev1$date == l_str_save$work_date) & (complete.cases(df_lev1[,c(vVars)])))
+                undebug(create_X_y)
+                l <- create_X_y(df = df_lev1,
+                                train_index = index_train,
+                                test_index = index_predict,
+                                vVars = vVars)
+                
+                profit_pred  <- knn.reg(train=l$X_train, y=l$y_train, test=l$X_test, k=10)[['pred']]
+                l_lev2_test[as.character(lev1_name)] <- list(data.frame('date' = l$date_test,
+                                                                        'profit_pred' = profit_pred,
+                                                                        'MA' = as.character(lev1_name)))
+                
+        }
+        
+        df_lev2_test <- do.call(rbind,l_lev2_test)
+        df_lev2_test <- rbind(l_str_save$l_lev2$test,df_lev2_test)
+        l_str_save$l_lev2$test <- df_lev2_test
+}
 ```
+
 
 ```{r}
 saveRDS(l_str_save, file = paste0("./data/vote/",l_str_save$stratagy_name,".rds"))

@@ -73,8 +73,9 @@ create_lxy_train1_train2 <- function(df_profitPr = df_profitPr,
                             'index_2' = index_2))
         }
         
-        df <- na.omit(df_profitPr[c(vVars,'profit','date')])
-        index_train <- df$date < (date - 26)
+        df <- na.omit(df_profitPr[c(vVars,'date')])
+        df <- merge(df,df_profitPr[,c('date','profit')], all.x = TRUE, by = 'date')
+        index_train <- df$date < date
         
         df_split_train <- df[index_train,]
         l_index <- get_separate_index(df = df_split_train, section_length = 21)
