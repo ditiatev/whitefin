@@ -58,13 +58,69 @@ source("./scripts/get_df_best_n_by_npv.r")
 source("./scripts/get_df_lev4.r")
 source("./scripts/get_cumulative_profit.r")
 source("./scripts/paste_primary_summary_parallel.r")
+source("./scripts/count_lev3.r")
+source("./scripts/get_level_value.r")
 ```
 
 # Data
+
+
 ```{r}
-# df_moex_previous   <- get_NormalDist(df_daily = df_profit, vColName = vColNames_moex,
-#                                       sliding_depth = 50, slidind_return = c(10,25,50))
-# df_moex_previous$date <- df_profit$date
+df_profit_total <- get_WorkSet(vStrategy)
+vVariables <- get_nona_variables(df_profit_total)
+vVariables
+```
+
+```{r}
+vColNames <- c('entryprice','exitprice',
+               'value_IMOEX','value_MOEX10','value_MOEXFN','value_RTSI',
+               'capitalization_RTSI','capitalization_RTSTR','capitalization_RTSTRN','capitalization_RTSTRR')
+df_level <- get_level_value(df_profit_total,vColNames)
+df_profit_total[,vColNames] <- df_level
+```
+
+
+```{r}
+vColNames <- c('value_IMOEX','value_MOEX10','value_MOEXFN','value_RTSI',
+               'capitalization_RTSI','capitalization_RTSTR','capitalization_RTSTRN','capitalization_RTSTRR',
+               "diffHL_IMOEX","diffOC_IMOEX","diffOL_IMOEX","diffHO_IMOEX",
+               "diffHL_MOEX10","diffOC_MOEX10","diffOL_MOEX10","diffHO_MOEX10",
+               "diffHL_MOEXFN","diffOC_MOEXFN","diffOL_MOEXFN","diffHO_MOEXFN",
+               "diffHL_RTSI","diffOC_RTSI","diffOL_RTSI","diffHO_RTSI")
+df_moex_previous <- get_NormalDist(df_daily = df_profit_total,
+                                   vColName = vColNames,
+                                   sliding_depth = 50, 
+                                   slidind_return = c(10,25,50))
+df_moex_previous$date <- df_profit_total$date
+```
+
+```{r}
+View(df_moex_previous[,c("date","capitalization_RTSTR_mean_Pr_10")])
+View(df_profitPr[,c("date","capitalization_RTSTR_mean_Pr_10")])
+View(df_profit_total[,c("date","capitalization_RTSI")])
+
+```
+
+
+```{r}
+df_NA <- merge(df_profit_total,df_moex_previous, all.x = T, by = 'date')
+get_nona_variables <- function(df_NA) {
+  vVariables <- unique(names(df_NA))
+  vVariables <- vVariables[which(vVariables != 'date')]
+  index <- which((df_NA$date > ymd('20190101')) & (df_NA$date < ymd('20200401')))
+  
+  l_topVars_NA <- list()
+for (vTopVar in vVariables) {
+  n_NA <- sum(is.na(df_NA[index,vTopVar]))
+  l_topVars_NA[vTopVar] <- n_NA
+}
+df_topVars_NA <- data.frame('n_NA' = do.call(rbind,l_topVars_NA))
+df_topVars_NA$Var <- rownames(df_topVars_NA)
+index <- (df_topVars_NA$n_NA < 50)
+
+vVariables <- df_topVars_NA[index,'Var']
+}
+vVariables <- get_nona_variables(df_NA)
 ```
 
 ```{r}
@@ -74,8 +130,6 @@ df_strategy <- read.csv("./data/strategy/strategy.csv",
 
 vStrategiesAll <- unique(df_strategy$strategy)
 ```
-
-
 
 ```{r}
 df_strategy %>%
@@ -88,26 +142,46 @@ df_strategy %>%
 l_strategies <- list()
 ```
 
+```{r}
+l_str_save$df_lev3 %>%
+  #filter(date > l_str_save$topVars_date) %>%
+  group_by(npv) %>%
+  summarise(mean(profit, na.rm = T), n())
+```
+
+
+
 
 Previos MA by vColNames
 ```{r, warning=FALSE, message=FALSE}
 vStrategies <- c("SL_14_18_RTS_Int02",'SL_14_18_RTS_Int015',"SL_14_18_RTS_Int01","SL_14_18_RTS_Int005",'SL_14_18_RTS_Int001')
 
-vStrategy <- 'SL_18_22_RTS_Int003'
-start_date <- dmy('01012017')
-df_profit_total <- get_WorkSet(vStrategy)
-df_profit_total <- df_profit_total[,1:11]
+# vStrategy <- 'SL_18_22_RTS_Int003'
+# 
+# df_profit_total <- get_WorkSet(vStrategy)
+# df_profit_total <- df_profit_total[,1:11]
+# start_date <- dmy('01012017')
+# stop_date <- max(df_profit_total$date)
 
-
-#for (vStrategy in vStrategies) {
+vStrategy <- 'SL_14_18_RTS_Int02'
+for (vStrategy in vStrategies[1]) {
   # data
   # df_profit <- get_WorkSet(vStrategy)
+  df_profit_total <- get_WorkSet(vStrategy)
+  df_profit_total <- df_profit_total[,1:11]
+  vColNames <- c('entryprice','exitprice')
+  df_level <- get_level_value(df_profit_total,vColNames)
+  df_profit_total[,vColNames] <- df_level
+
+  start_date <- dmy('01012017')
+  stop_date <- min(c(max(df_profit_total$date),max(df_moex_previous$date)))
 
 l_str_save <- list()
-```
 
+#dates_iteration_index <- which(df_profit_total$date > l_str_save$work_date)
+dates_iteration_index <- which(df_profit_total$date > start_date)
+for (date_iteration_index in dates_iteration_index) {
 
-```{r, warning=FALSE, message=FALSE}
 # start
 if (is.null(l_str_save['stratagy_name'][[1]])) {
   l_str_save['stratagy_name'] <- vStrategy
@@ -140,15 +214,17 @@ if (is.null(l_str_save['df_profit'][[1]])) {
   
   # date update
   l_str_save['last_work_date'] <- list(start_date-1)
-  l_str_save['work_date'] <- list(start_date)
+  l_str_save['work_date'] <- list(max(df_profit_total[df_profit_total$date < start_date,'date'])[[1]])
 } else {
   # date update
-  last_work_date <- max(df_profit$date)
+  last_work_date <- max(l_str_save$df_profit$date)
   l_str_save['last_work_date'] <- list(last_work_date)
   
   # code to get df_profit for next date
-  df_profit_next <- head(df_profit_total[df_profit_total$date > last_work_date,],1)
-  df_profit <- rbind(l_str_save$df_profit,df_profit_next)
+  df_profit_next <- head(df_profit_total[df_profit_total$date >= last_work_date,],2)
+  df_profit_next[2,3:11] <- NA
+  nrow_df_profit <- nrow(l_str_save$df_profit)
+  df_profit <- rbind(l_str_save$df_profit[1:(nrow_df_profit-1),],df_profit_next)
   l_str_save['df_profit'] <- list(df_profit)
   
   # make pr colums
@@ -300,7 +376,7 @@ if (is.null(l_str_save['l_lev1'][[1]])) {
         ### TEST
         undebug(get_vote_summary_parallel)
         l_lev1_test <- list(get_vote_summary_parallel(df_profitPr = df_profitPrAll,
-                                                      l_str_save = l_str_save, paralleling = FALSE))
+                                                      l_str_save = l_str_save, paralleling = TRUE))
         l_lev1['test'] <- l_lev1_test
         
         ### UPDATE
@@ -308,8 +384,9 @@ if (is.null(l_str_save['l_lev1'][[1]])) {
 } else {
   last_test_date <- max(l_str_save$l_lev1$test$date)
   if (l_str_save$work_date != last_test_date) {
+    #undebug(get_vote_summary_parallel)
     df_lev1_test <- get_vote_summary_parallel(df_profitPr = df_profitPrAll,
-                                              l_str_save = l_str_save)
+                                              l_str_save = l_str_save, paralleling = TRUE)
     l_str_save$l_lev1$test <- rbind(l_str_save$l_lev1$test,df_lev1_test)
   }
 }
@@ -414,16 +491,24 @@ if (is.null(l_str_save['l_lev2'][[1]])) {
                 # prediction
                 index_train <- ((df_lev1$date < l_str_save$work_date) & (complete.cases(df_lev1)))
                 index_predict <- which((df_lev1$date == l_str_save$work_date) & (complete.cases(df_lev1[,c(vVars)])))
-                undebug(create_X_y)
+                
+                if (length(index_predict) == 0) {
+                  l_lev2_test[as.character(lev1_name)] <- list(data.frame('date' = l_str_save$work_date,
+                                                                          'profit_pred' = NA,
+                                                                          'MA' = as.character(lev1_name)))
+                  } else {
+                #undebug(create_X_y)
                 l <- create_X_y(df = df_lev1,
                                 train_index = index_train,
                                 test_index = index_predict,
                                 vVars = vVars)
                 
                 profit_pred  <- knn.reg(train=l$X_train, y=l$y_train, test=l$X_test, k=10)[['pred']]
+              
                 l_lev2_test[as.character(lev1_name)] <- list(data.frame('date' = l$date_test,
                                                                         'profit_pred' = profit_pred,
                                                                         'MA' = as.character(lev1_name)))
+                }
                 
         }
         
@@ -431,18 +516,90 @@ if (is.null(l_str_save['l_lev2'][[1]])) {
         df_lev2_test <- rbind(l_str_save$l_lev2$test,df_lev2_test)
         l_str_save$l_lev2$test <- df_lev2_test
 }
-```
+##########
 
+##########
+##########
+## Lev3
+##########
+  #undebug(count_lev3)
+  l_lev3 <- count_lev3(l_str_save = l_str_save)
+  l_str_save['df_lev3'] <- list(l_lev3$df_lev3)
+  l_str_save['l_npv']   <- list(l_lev3$l_npv)
+}
 
-```{r}
 saveRDS(l_str_save, file = paste0("./data/vote/",l_str_save$stratagy_name,".rds"))
+}
 ```
 
+# lev3
+```{r, warning=FALSE, message=FALSE}
+source("./scripts/count_lev3.r")
+l_str_save['work_date'] <- list(ymd('20170105'))
+l_str_save['last_work_date'] <- list(start_date-1)
+l_str_save['df_lev3'] <- NULL
+l_str_save['l_npv'] <- NULL
 
+dates_iteration_index <- which((df_profit_total$date > start_date) & (df_profit_total$date < ymd('20200401')))
+for (date_iteration_index in dates_iteration_index) {
+  debug(count_lev3)
+  l_lev3 <- count_lev3(l_str_save = l_str_save)
+  l_str_save['df_lev3'] <- list(l_lev3$df_lev3)
+  l_str_save['l_npv']   <- list(l_lev3$l_npv)
+  l_str_save$last_work_date <- l_str_save$work_date
+  print(l_str_save$work_date)
+  l_str_save$work_date <- head(df_profit_total[df_profit_total$date > l_str_save$work_date,'date'],1)
+}
+
+#undebug(count_lev3)
+#z <- count_lev3(l_str_save = l_str_save)
+```
 
 ```{r}
-max(df_lev1_train$`30`$date)
+#l_str_save <- readRDS("./data/vote/SL_14_18_RTS_Int015.rds")
+
+l_str_save[['df_lev3']] %>%
+ filter(date > start_date, date < ymd('20200401')) %>%
+  group_by(year(date), vote >= 0) %>%
+  summarise(sum(profit, na.rm = T),n())
+
+l_str_save[['df_lev3']] %>%
+ filter(date < ymd('20200401')) %>%
+  group_by(npv >= 0) %>%
+  summarise(sum(profit, na.rm = T),n())
 ```
+
+
+
+```{r, warning=FALSE, message=FALSE}
+df_profit_lev3 <- cbind(df_profitPr[,c("date","profit","profit_by_day","profit_pred")],
+                        df_profit_lev3)
+df_profit_lev3$profit_pred_Pr0 <- df_profit_lev3$profit_pred
+df_profit_lev3$year <- year(df_profit_lev3$date)
+df_profit_lev3$month <- month(df_profit_lev3$date)
+
+df_train <- df_profit_lev3[which(df_profitPr$date < vDates[1]),]
+df_npv <- get_df_best_n_by_npv(df_train = df_train, vProfitNext = vProfitNext)
+for (x in 1:nrow(df_npv)) {
+  n        <- df_npv[x,"n"]
+  lev_prof <- df_npv[x,"lev_prof"]
+  npv      <- df_npv[x,"npv"]
+  
+  v_npv_Name   <- paste0('npv_profit_pred_next_',vProfitNext,'_n_',n)
+  v_Pr_n_Names <- paste0('profit_pred', "_Pr", 0:n)
+  df_profit_lev3[,'profit_pred'] <- apply(df_profit_lev3[,v_Pr_n_Names], 1, sum, na.rm = T)
+  
+  traid_index <- (df_profit_lev3$profit_pred > lev_prof)
+  df_strategy_vote[,v_npv_Name] <- 0
+  df_strategy_vote[traid_index,v_npv_Name] <- npv
+}
+```
+
+
+
+
+
+
 
 
 ```{r, warning=FALSE, message=FALSE}
