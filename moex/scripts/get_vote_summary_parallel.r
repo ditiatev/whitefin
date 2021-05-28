@@ -35,12 +35,40 @@ get_vote_summary_parallel <- function(df_profitPr = df_profitPr,
                                        vVars = vVars,
                                        normalization = TRUE) {
                         
-                        df_train   <- na.omit(df[train_index,c(c(vVars,'date','profit'))])
-                        df <- df[!is.infinite(rowSums(df[vVars])),]
-                        X_train    <- df_train[,vVars]
-                        y_train    <- df_train[,c('profit')]
-                        date_train <- df_train[,c('date')]
+ 
                         
+                        # new start ################################
+                        
+                        #
+                        ### old
+                        # df_train   <- na.omit(df[train_index,c(c(vVars,'date','profit'))])
+                        # 
+                        # X_train    <- df_train[,vVars]
+                        # y_train    <- df_train[,c('profit')]
+                        # date_train <- df_train[,c('date')]
+                        ### old
+                        #
+                        
+                        # get away outliers for train set
+                        df_train <- na.omit(df[train_index,c(c(vVars,'date','profit'))])
+                        for (vVar in vVars) {
+                                var <- df_train[,vVar]
+                                vMin <- quantile(var, 0.015, type = 1)
+                                vMax <- quantile(var, 0.985, type = 1)
+                                index <- which((df_train[,vVar] < vMin) | (df_train[,vVar] > vMax))
+                                df_train[index,vVar] <- NA
+                        }
+                        index <- complete.cases(df_train)
+                        df_train <- df_train[index,]
+                        
+                        X_train <- df_train[,vVars]
+                        y_train <- df_train[,c('profit')]
+                        date_train <- df_train[,c('date')]
+                        # new end ################################
+                        
+                        
+                        
+                        df <- df[!is.infinite(rowSums(df[vVars])),]
                         X_test  <- df[test_index,vVars]
                         y_test  <- df[test_index,c('profit')]
                         date_test  <- df[test_index,c('date')]
