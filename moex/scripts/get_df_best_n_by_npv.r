@@ -14,7 +14,7 @@ for (n in 1:(vProfitNext-1)) {
         max_lev_profit_pred <- 0
         for (lev_profit_pred in lev_profit_preds[1:999]) {
                 index <- which(df_train$profit_pred > lev_profit_pred)
-                profit_by_day <- sum(df_train[index,"profit_by_day"], na.rm = T)
+                profit_by_day <- sum(df_train[index,"profit"], na.rm = T)
                 if (profit_by_day > max_profit_by_day) {
                         max_profit_by_day <- profit_by_day
                         max_lev_profit_pred <- lev_profit_pred
@@ -26,7 +26,7 @@ for (n in 1:(vProfitNext-1)) {
         df_train[index,"trade_index"] <- 'TRADE'
         
         df_train_summary <- df_train %>%
-                mutate(profit_model = if_else(trade_index == 'TRADE', profit_by_day, 0)) %>%
+                mutate(profit_model = if_else(trade_index == 'TRADE', profit, 0)) %>%
                 group_by(year, month) %>%
                 summarise(profit_model = sum(profit_model))
         

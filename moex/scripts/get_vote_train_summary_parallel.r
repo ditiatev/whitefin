@@ -1,7 +1,8 @@
 get_vote_train_summary_parallel <- function(df_profitPr = df_profitPr,
                                             df_topVars = df_topVars,
                                             date = date,
-                                            days_lag = days_lag) {
+                                            days_lag = days_lag, 
+                                            paralleling = TRUE) {
         
         get_vote_train_summary_parallel <- function(df_profitPr = df_profitPr,
                                                     df_topVars = df_topVars,
@@ -51,6 +52,7 @@ get_vote_train_summary_parallel <- function(df_profitPr = df_profitPr,
                                                days_lag = days_lag) {
                                 
                                 df <- na.omit(df_profitPr[c(vVars,'profit','date')])
+                                df <- df[!is.infinite(rowSums(df[vVars])),]
                                 index_train <- df$date < (date - days_lag)
                                 
                                 df_split_train <- df[index_train,]
@@ -253,6 +255,7 @@ get_vote_train_summary_parallel <- function(df_profitPr = df_profitPr,
                                 return(k)
                         }
                         
+                        if (paralleling == TRUE) {
                         l_vote <- list()
                         len = nrow(df_topVars)
                         foreach(z = 1:len, .packages="dplyr") %dopar% {
@@ -283,8 +286,42 @@ get_vote_train_summary_parallel <- function(df_profitPr = df_profitPr,
                                 
                                 df_vote
                         }
+                        } else {
+                                l_vote <- list()
+                                len = nrow(df_topVars)
+                                #foreach(z = 1:len, .packages="dplyr") %dopar% {
+                                        for (z in 1:len) {
+                                        
+                                        vVars <- create_vVars(df_topVars = df_topVars, index = z)
+                                        
+                                        l <- create_lxy(df_profitPr = df_profitPr,
+                                                        date = date, vVars = vVars, days_lag = days_lag)
+                                        if (is.na(l)) {next}
+                                        
+                                        prob0_summary <- get_prob0_summary_train(l = l)
+                                        
+                                        df_vote <- rbind(data.frame('date' = prob0_summary$l_train_1$date_test,
+                                                                    prob0_summary$l_train_1$summary),
+                                                         data.frame('date' = prob0_summary$l_train_2$date_test,
+                                                                    prob0_summary$l_train_2$summary)
+                                        )
+                                        
+                                        for (x in 1:nrow(df_vote)) {
+                                                df_vote[x,c('k_down','k_up')] <- get_scater_prob0_summary(l = l,
+                                                                                                          vPred = df_vote[x,"vPred"])
+                                        }
+                                        
+                                        
+                                        df_vote$var1 <- vVars[1]
+                                        df_vote$var2 <- vVars[2]
+                                        
+                                        l_vote[z] <- df_vote
+                                        }
+                                l_vote
+                        }
                 }
-                
+                        
+                if (paralleling == TRUE) {
                 cl <- parallel::makeCluster(core)
                 doParallel::registerDoParallel(cl)
                 l_vote_summary <- tryCatch(get_vote_summary_train(df_profitPr = df_profitPr,
@@ -293,8 +330,14 @@ get_vote_train_summary_parallel <- function(df_profitPr = df_profitPr,
                                                                   days_lag = days_lag),
                                            error = function(e) print(e))
                 parallel::stopCluster(cl)
-                l_vote_summary
-        }
+                } else {
+                        l_vote_summary <- get_vote_summary_train(df_profitPr = df_profitPr,
+                                                                 df_topVars = df_topVars,
+                                                                 date = date,
+                                                                 days_lag = days_lag)
+                }
+                        l_vote_summary
+                }
         
         l_vote <- get_vote_train_summary_parallel(df_profitPr = df_profitPr,
                                                   df_topVars = df_topVars,
@@ -302,6 +345,8 @@ get_vote_train_summary_parallel <- function(df_profitPr = df_profitPr,
                                                   days_lag = days_lag)
         
         df_vote <- do.call(rbind,l_vote)
+        df_vote[sapply(df_vote, is.nan)] <- NA
+        df_vote[sapply(df_vote, is.infinite)] <- NA
         
         df_vote_m <- df_vote %>%
                 group_by(date) %>%
@@ -310,7 +355,8 @@ get_vote_train_summary_parallel <- function(df_profitPr = df_profitPr,
                           scater_prob0_up = sum(k_up*prob0_up, na.rm = T)/sum(k_up, na.rm = T),
                           scater_prob0_down = sum(k_down*prob0_down, na.rm = T)/sum(k_down, na.rm = T),
                           prob0_up = mean(prob0_up, na.rm = T),
-                          prob0_down = mean(prob0_down, na.rm = T)
+                          prob0_down = mean(prob0_down, na.rm = T),
+                          n = n()
                 )
         return(df_vote_m)
 }

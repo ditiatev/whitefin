@@ -95,6 +95,7 @@ paste_primary_summary_parallel <- function(date,
                         vVar1 <- df_variabels[z, "V1"]
                         vVar2 <- df_variabels[z, "V2"]
                         df <- na.omit(df_profit[c(vVar1, vVar2, 'profit', 'date')])
+                        df <- df[!is.infinite(rowSums(df[c(vVar1, vVar2)])),]
                         
                         l_index <- get_separate_index(df = df, section_length = 21)
                         
@@ -143,7 +144,7 @@ paste_primary_summary_parallel <- function(date,
                                 ps = paste_primary_summary(z = z,
                                                            df_variabels = df_variabels,
                                                            df_profit = df_profit)
-                                l_ps[as.character(z)] <- ps
+                                l_ps[as.character(z)] <- list(ps)
                         }
                         l_ps
                         

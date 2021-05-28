@@ -4,9 +4,22 @@ create_X_y <- function(df = df,
                        vVars = vVars,
                        normalization = TRUE) {
         
-        X_train <- df[train_index,vVars]
-        y_train <- df[train_index,c('profit')]
-        date_train <- df[train_index,c('date')]
+        # get away outliers for train set
+        df_train <- df[train_index,]
+        for (vVar in vVars) {
+                var <- df_train[,vVar]
+                vMin <- quantile(var, 0.015, type = 1)
+                vMax <- quantile(var, 0.985, type = 1)
+                index <- which((df_train[,vVar] < vMin) | (df_train[,vVar] > vMax))
+                df_train[index,vVar] <- NA
+        }
+        index <- complete.cases(df_train)
+        df_train <- df_train[index,]
+        
+        X_train <- df_train[,vVars]
+        y_train <- df_train[,c('profit')]
+        date_train <- df_train[,c('date')]
+        
         X_test  <- df[test_index,vVars]
         y_test  <- df[test_index,c('profit')]
         date_test  <- df[test_index,c('date')]

@@ -35,9 +35,12 @@ get_vote_summary_parallel <- function(df_profitPr = df_profitPr,
                                        vVars = vVars,
                                        normalization = TRUE) {
                         
-                        X_train <- df[train_index,vVars]
-                        y_train <- df[train_index,c('profit')]
-                        date_train <- df[train_index,c('date')]
+                        df_train   <- na.omit(df[train_index,c(c(vVars,'date','profit'))])
+                        df <- df[!is.infinite(rowSums(df[vVars])),]
+                        X_train    <- df_train[,vVars]
+                        y_train    <- df_train[,c('profit')]
+                        date_train <- df_train[,c('date')]
+                        
                         X_test  <- df[test_index,vVars]
                         y_test  <- df[test_index,c('profit')]
                         date_test  <- df[test_index,c('date')]
@@ -83,6 +86,7 @@ get_vote_summary_parallel <- function(df_profitPr = df_profitPr,
                                        days_lag = days_lag) {
                         
                         df <- na.omit(df_profitPr[c(vVars,'date')])
+                        df <- df[!is.infinite(rowSums(df[vVars])),]
                         df <- merge(df,df_profitPr[,c('date','profit')],by = 'date',all.x = T)
                         
                         index_train <- which(df$date < date)
@@ -269,7 +273,8 @@ get_vote_summary_parallel <- function(df_profitPr = df_profitPr,
                                           scater_prob0_down = sum(k_down*prob0_down, na.rm = T)/sum(k_down, na.rm = T),
                                           prob0_up = mean(prob0_up, na.rm = T),
                                           prob0_down = mean(prob0_down, na.rm = T),
-                                          date = date)
+                                          date = date,
+                                          n = n())
                         
                         return(df_vote_m)
                 }

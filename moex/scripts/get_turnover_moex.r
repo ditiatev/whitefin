@@ -8,7 +8,7 @@ df_market <- data.frame(name = character(),
                         numtrades = character(),
                         date = Date())
 
-for (date in dates) {
+for (date in dates[15]) {
         # get data
         http <- paste0("https://iss.moex.com/iss/turnovers.json?date=",as.Date(date,origin = "1970-01-01"))
         jsonData <- fromJSON(http)

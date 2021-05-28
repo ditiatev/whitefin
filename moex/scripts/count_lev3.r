@@ -41,7 +41,7 @@ count_lev3 <- function(l_str_save = l_str_save, only_workdate = NA) {
         
         get_df_npv <- function() {
                 
-                df_lev3_train <- df_profit_lev3[which(df_lev3$date < l_str_save$work_date),]
+                df_lev3_train <- df_lev3[which(df_lev3$date < l_str_save$work_date),]
                 l_npv <- list()
                 for (x in 1:3) {
                         l_npv[x] <- list(get_df_best_n_by_npv(df_train = df_lev3_train, vProfitNext = as.numeric(MA)))
@@ -80,7 +80,10 @@ count_lev3 <- function(l_str_save = l_str_save, only_workdate = NA) {
                 df_lev3 <- df_lev3[,col_names]
                 colnames(df_lev3) <- c('date','profit','npv1','npv2','npv3')
                 df_lev3 <- df_lev3 %>%
-                        mutate(vote = npv1+npv2+npv3,
+                        mutate(second_vote = npv2+npv3,
+                               vote = npv1,
+                               vote = if_else(second_vote == 2, vote+1, vote),
+                               vote = if_else(second_vote == -2, vote-1, vote),
                                MA = MA)
                 return(df_lev3)
         }
@@ -155,11 +158,13 @@ count_lev3 <- function(l_str_save = l_str_save, only_workdate = NA) {
                 
                 df_lev3_by_years <- df_lev3 %>%
                         filter(vote <= vote_level) %>%
-                        group_by(year(date),month(date)) %>%
-                        summarise(total_profit = sum(profit, na.rm = T), 
-                                  mean_profit = mean(profit, na.rm = T), 
-                                  n = n())
-                l_vote_level[as.character(vote_level)] <- mean(culculate_NPV(df_lev3_by_years$total_profit))
+                        filter(!is.na(profit))
+                        #group_by(year(date),month(date)) %>%
+                        #summarise(total_profit = sum(profit, na.rm = T), 
+                        #          mean_profit = mean(profit, na.rm = T), 
+                        #          n = n())
+                l_vote_level[as.character(vote_level)] <- mean(culculate_NPV(df_lev3_by_years$profit))
+                #l_vote_level[as.character(vote_level)] <- mean(culculate_NPV(df_lev3_by_years$total_profit))
         }
         df_vote_level <- data.frame(npv_n = do.call(rbind,l_vote_level))
         df_vote_level$vote <- as.numeric(rownames(df_vote_level))
@@ -169,11 +174,13 @@ count_lev3 <- function(l_str_save = l_str_save, only_workdate = NA) {
         for (vote_level in unique(df_lev3$vote)) {
                 df_lev3_by_years <- df_lev3 %>%
                         filter(vote >= vote_level) %>%
-                        group_by(year(date),month(date)) %>%
-                        summarise(total_profit = sum(profit, na.rm = T), 
-                                  mean_profit = mean(profit, na.rm = T), 
-                                  n = n())
-                l_vote_level[as.character(vote_level)] <- mean(culculate_NPV(df_lev3_by_years$total_profit))
+                        filter(!is.na(profit))
+                        #group_by(year(date),month(date)) %>%
+                        #summarise(total_profit = sum(profit, na.rm = T), 
+                        #          mean_profit = mean(profit, na.rm = T), 
+                        #          n = n())
+                l_vote_level[as.character(vote_level)] <- mean(culculate_NPV(df_lev3_by_years$profit))
+                #l_vote_level[as.character(vote_level)] <- mean(culculate_NPV(df_lev3_by_years$total_profit))
         }
         df_vote_level <- data.frame(npv_p = do.call(rbind,l_vote_level))
         df_vote_level$vote <- as.numeric(rownames(df_vote_level))
@@ -187,10 +194,10 @@ count_lev3 <- function(l_str_save = l_str_save, only_workdate = NA) {
                 arrange(date)
         
         if (only_workdate == TRUE) {
-                df_lev3_vote <- rbind(l_str_save$df_lev3,tail(df_lev3_vote[,c("date","profit","npv","vote")],1))
+                df_lev3_vote <- rbind(l_str_save$df_lev3,tail(df_lev3_vote[,c("date","profit","npv","vote","npv_p")],1))
         }
         
-        return(list('df_lev3' = df_lev3_vote[,c("date","profit","npv","vote")],
+        return(list('df_lev3' = df_lev3_vote[,c("date","profit","npv","vote","npv_p")],
                     'l_npv' = l_npv))
         
 }
