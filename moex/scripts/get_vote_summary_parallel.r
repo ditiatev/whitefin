@@ -1,11 +1,13 @@
 get_vote_summary_parallel <- function(df_profitPr = df_profitPr,
                                       l_str_save = l_str_save,
-                                      core = 3, 
-                                      paralleling = TRUE) {
+                                      core = 4, 
+                                      paralleling = TRUE,
+                                      knn_k = 100) {
         
         get_vote_summary <- function(df_profitPr = df_profitPr,
                                      l_str_save = l_str_save,
-                                     vVoteIndex = vVoteIndex) {
+                                     vVoteIndex = vVoteIndex,
+                                     knn_k = knn_k) {
                 
                 create_df_vote <- function() {
                         df_vote <- data.frame("var1" = "var1",
@@ -155,12 +157,12 @@ get_vote_summary_parallel <- function(df_profitPr = df_profitPr,
                         knn_train  <- FNN::knn.reg(train=l_predict$X_train, 
                                                    y=l_predict$y_train, 
                                                    test=l_predict$X_train, 
-                                                   k=100)
+                                                   k=knn_k)
                         df_train <- data.frame('pred' = knn_train[["pred"]], 'profit' = l_predict$y_train)
                         
                         knn_test  <- FNN::knn.reg(train=l_predict$X_train, 
                                                   y=l_predict$y_train, 
-                                                  test=l_predict$X_test, k=100)
+                                                  test=l_predict$X_test, k=knn_k)
                         
                         vPred <- knn_test[["pred"]]
                         vPredIndex <- (df_train$pred >= vPred)
@@ -209,14 +211,14 @@ get_vote_summary_parallel <- function(df_profitPr = df_profitPr,
                         knn_train <- FNN::knn.reg(train=l_train_1$X_train,
                                                   y=l_train_1$y_train,
                                                   test=l_train_1$X_test,
-                                                  k=100)
+                                                  k=knn_k)
                         ps100_1 <- get_primary_summary(pred = knn_train[["pred"]], y = l_train_1$y_test, point = vPred)
                         
                         l_train_2 <- l$l_train_2
                         knn_train <- FNN::knn.reg(train=l_train_2$X_train,
                                                   y=l_train_2$y_train,
                                                   test=l_train_2$X_test, 
-                                                  k=100)
+                                                  k=knn_k)
                         ps100_2 <- get_primary_summary(pred = knn_train[["pred"]], y = l_train_2$y_test, point = vPred)
                         
                         ps <- as.numeric(c(ps100_1,ps100_2))
@@ -360,14 +362,16 @@ get_vote_summary_parallel <- function(df_profitPr = df_profitPr,
         doParallel::registerDoParallel(cl)
         l_vote_summary <- tryCatch(get_vote_summary(df_profitPr = df_profitPr,
                                                     l_str_save = l_str_save,
-                                                    vVoteIndex = vVoteIndex), 
+                                                    vVoteIndex = vVoteIndex,
+                                                    knn_k = knn_k), 
                                    error = function(e) print(e))
         parallel::stopCluster(cl)
         
         } else {
                 l_vote_summary <- get_vote_summary(df_profitPr = df_profitPr,
                                                    l_str_save = l_str_save,
-                                                   vVoteIndex = vVoteIndex)
+                                                   vVoteIndex = vVoteIndex,
+                                                   knn_k = knn_k)
                 }
         
         df_vote_summary  <- as.data.frame(do.call(rbind,l_vote_summary))

@@ -1,11 +1,13 @@
 paste_primary_summary_parallel <- function(date,
                                            df_variabels,
                                            df_profit,
-                                           core = 3,
-                                           paralleling = TRUE) {
+                                           core = 4,
+                                           paralleling = TRUE,
+                                           knn_k = 100) {
         paste_primary_summary <- function(date,
                                           df_variabels,
-                                          df_profit) {
+                                          df_profit,
+                                          knn_k = knn_k) {
                 
                 create_X_y <- function(df = df, 
                                        train_index = train_index, 
@@ -91,7 +93,8 @@ paste_primary_summary_parallel <- function(date,
                 
                 paste_primary_summary <- function(z,
                                                   df_variabels,
-                                                  df_profit) {
+                                                  df_profit,
+                                                  knn_k) {
                         vVar1 <- df_variabels[z, "V1"]
                         vVar2 <- df_variabels[z, "V2"]
                         df <- na.omit(df_profit[c(vVar1, vVar2, 'profit', 'date')])
@@ -105,7 +108,7 @@ paste_primary_summary_parallel <- function(date,
                                         test_index = l_index$index_2,
                                         vVar1 = vVar1,
                                         vVar2 = vVar2)
-                        knn_train <- FNN::knn.reg(train=l$X_train, y=l$y_train, test=l$X_test, k=100)
+                        knn_train <- FNN::knn.reg(train=l$X_train, y=l$y_train, test=l$X_test, k= knn_k)
                         ps100_1 <- get_primary_summary(pred = knn_train[["pred"]], y = l$y_test)
                         
                         l <- create_X_y(df = df,
@@ -113,7 +116,7 @@ paste_primary_summary_parallel <- function(date,
                                         test_index = l_index$index_1,
                                         vVar1 = vVar1,
                                         vVar2 = vVar2)       
-                        knn_train <- FNN::knn.reg(train=l$X_train, y=l$y_train, test=l$X_test, k=100)
+                        knn_train <- FNN::knn.reg(train=l$X_train, y=l$y_train, test=l$X_test, k=knn_k)
                         ps100_2 <- get_primary_summary(pred = knn_train[["pred"]], y = l$y_test)
                         
                         ps <- c(vVar1,vVar2,ps100_1,ps100_2)
@@ -135,7 +138,8 @@ paste_primary_summary_parallel <- function(date,
                 foreach(z = 1:len, .packages="dplyr") %dopar% {
                         ps = paste_primary_summary(z = z,
                                                    df_variabels = df_variabels,
-                                                   df_profit = df_profit)
+                                                   df_profit = df_profit,
+                                                   knn_k = knn_k)
                         ps
                 }
                 } else {
@@ -143,7 +147,8 @@ paste_primary_summary_parallel <- function(date,
                         for (z in 1:len) {
                                 ps = paste_primary_summary(z = z,
                                                            df_variabels = df_variabels,
-                                                           df_profit = df_profit)
+                                                           df_profit = df_profit,
+                                                           knn_k = knn_k)
                                 l_ps[as.character(z)] <- list(ps)
                         }
                         l_ps
@@ -156,14 +161,16 @@ paste_primary_summary_parallel <- function(date,
         doParallel::registerDoParallel(cl)
         l_var <- tryCatch(paste_primary_summary(date = date,
                                                 df_variabels = df_variabels,
-                                                df_profit = df_profit), 
+                                                df_profit = df_profit,
+                                                knn_k = knn_k), 
                           error = function(e) print(e))
         parallel::stopCluster(cl)
         l_var
         } else {
                 l_var <- paste_primary_summary(date = date,
                                                df_variabels = df_variabels,
-                                               df_profit = df_profit)
+                                               df_profit = df_profit,
+                                               knn_k = knn_k)
                 l_var
                 }
 }

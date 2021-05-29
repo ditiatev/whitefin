@@ -2,18 +2,21 @@ get_vote_train_summary_parallel <- function(df_profitPr = df_profitPr,
                                             df_topVars = df_topVars,
                                             date = date,
                                             days_lag = days_lag, 
-                                            paralleling = TRUE) {
+                                            paralleling = TRUE,
+                                            knn_k = 100) {
         
         get_vote_train_summary_parallel <- function(df_profitPr = df_profitPr,
                                                     df_topVars = df_topVars,
                                                     date = date,
-                                                    core = 3,
-                                                    days_lag = days_lag) {
+                                                    core = 4,
+                                                    days_lag = days_lag,
+                                                    knn_k = knn_k) {
                 
                 get_vote_summary_train <- function(df_profitPr = df_profitPr,
                                                    df_topVars = df_topVars,
                                                    date = date, 
-                                                   days_lag = days_lag) {
+                                                   days_lag = days_lag,
+                                                   knn_k = knn_k) {
                         
                         create_df_vote <- function() {
                                 df_vote <- data.frame("var1" = "var1",
@@ -154,19 +157,19 @@ get_vote_train_summary_parallel <- function(df_profitPr = df_profitPr,
                                 
                                 return(vVars)
                         }
-                        get_prob0_summary_train <- function(l) {
+                        get_prob0_summary_train <- function(l,knn_k = knn_k) {
                                 # l_train_1
                                 l_predict = l$l_train_1
                                 
                                 knn_train  <- FNN::knn.reg(train=l_predict$X_train, 
                                                            y=l_predict$y_train, 
                                                            test=l_predict$X_train, 
-                                                           k=100)
+                                                           k=knn_k)
                                 df_train <- data.frame('pred' = knn_train[["pred"]], 'profit' = l_predict$y_train)
                                 
                                 knn_test  <- FNN::knn.reg(train=l_predict$X_train, 
                                                           y=l_predict$y_train, 
-                                                          test=l_predict$X_test, k=100)
+                                                          test=l_predict$X_test, k=knn_k)
                                 
                                 vPreds <- knn_test[["pred"]]
                                 l_prob0 <- list()
@@ -192,12 +195,12 @@ get_vote_train_summary_parallel <- function(df_profitPr = df_profitPr,
                                 knn_train  <- FNN::knn.reg(train=l_predict$X_train, 
                                                            y=l_predict$y_train, 
                                                            test=l_predict$X_train, 
-                                                           k=100)
+                                                           k=knn_k)
                                 df_train <- data.frame('pred' = knn_train[["pred"]], 'profit' = l_predict$y_train)
                                 
                                 knn_test  <- FNN::knn.reg(train=l_predict$X_train, 
                                                           y=l_predict$y_train, 
-                                                          test=l_predict$X_test, k=100)
+                                                          test=l_predict$X_test, k=knn_k)
                                 
                                 vPreds <- knn_test[["pred"]]
                                 l_prob0 <- list()
@@ -245,20 +248,20 @@ get_vote_train_summary_parallel <- function(df_profitPr = df_profitPr,
                                 primary_summary <- c(profit_min,profit_min_down0,profit_max,profit_max_up0,profit)
                                 return(primary_summary)
                         }
-                        get_scater_prob0_summary <- function(l, vPred) {
+                        get_scater_prob0_summary <- function(l, vPred, knn_k = knn_k) {
                                 
                                 l_train_1 <- l$l_train_1
                                 knn_train <- FNN::knn.reg(train=l_train_1$X_train,
                                                           y=l_train_1$y_train,
                                                           test=l_train_1$X_test,
-                                                          k=100)
+                                                          k=knn_k)
                                 ps100_1 <- get_primary_summary(pred = knn_train[["pred"]], y = l_train_1$y_test, point = vPred)
                                 
                                 l_train_2 <- l$l_train_2
                                 knn_train <- FNN::knn.reg(train=l_train_2$X_train,
                                                           y=l_train_2$y_train,
                                                           test=l_train_2$X_test, 
-                                                          k=100)
+                                                          k=knn_k)
                                 ps100_2 <- get_primary_summary(pred = knn_train[["pred"]], y = l_train_2$y_test, point = vPred)
                                 
                                 ps <- as.numeric(c(ps100_1,ps100_2))
@@ -352,14 +355,16 @@ get_vote_train_summary_parallel <- function(df_profitPr = df_profitPr,
                 l_vote_summary <- tryCatch(get_vote_summary_train(df_profitPr = df_profitPr,
                                                                   df_topVars = df_topVars,
                                                                   date = date,
-                                                                  days_lag = days_lag),
+                                                                  days_lag = days_lag,
+                                                                  knn_k = knn_k),
                                            error = function(e) print(e))
                 parallel::stopCluster(cl)
                 } else {
                         l_vote_summary <- get_vote_summary_train(df_profitPr = df_profitPr,
                                                                  df_topVars = df_topVars,
                                                                  date = date,
-                                                                 days_lag = days_lag)
+                                                                 days_lag = days_lag,
+                                                                 knn_k = knn_k)
                 }
                         l_vote_summary
                 }
@@ -367,7 +372,8 @@ get_vote_train_summary_parallel <- function(df_profitPr = df_profitPr,
         l_vote <- get_vote_train_summary_parallel(df_profitPr = df_profitPr,
                                                   df_topVars = df_topVars,
                                                   date = date,
-                                                  days_lag = days_lag)
+                                                  days_lag = days_lag,
+                                                  knn_k = knn_k)
         
         df_vote <- do.call(rbind,l_vote)
         df_vote[sapply(df_vote, is.nan)] <- NA
