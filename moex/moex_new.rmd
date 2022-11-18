@@ -62,52 +62,12 @@ source("./scripts/count_lev3.r")
 source("./scripts/get_level_value.r")
 ```
 
-# Data
-
 
 ```{r}
-df_profit_total <- get_WorkSet(vStrategies[5])
-vVariables <- get_nona_variables(df_profit_total)
-
-vColNames <- c('entryprice','exitprice',
-               'value_IMOEX','value_MOEX10','value_MOEXFN','value_RTSI',
-               'capitalization_RTSI','capitalization_RTSTR','capitalization_RTSTRN','capitalization_RTSTRR')
-df_level <- get_level_value(df_profit_total,vColNames)
-df_profit_total[,paste0(vColNames,'_level')] <- df_level
-```
-
-
-```{r, warning=FALSE, message=FALSE}
-vColNames_level <- paste0(vColNames,'_level')
-vColNames <- c('value_IMOEX','value_MOEX10','value_MOEXFN','value_RTSI',
-               'capitalization_RTSI','capitalization_RTSTR','capitalization_RTSTRN','capitalization_RTSTRR',
-               "diffHL_IMOEX","diffOC_IMOEX","diffOL_IMOEX","diffHO_IMOEX",
-               "diffHL_MOEX10","diffOC_MOEX10","diffOL_MOEX10","diffHO_MOEX10",
-               "diffHL_MOEXFN","diffOC_MOEXFN","diffOL_MOEXFN","diffHO_MOEXFN",
-               "diffHL_RTSI","diffOC_RTSI","diffOL_RTSI","diffHO_RTSI",vColNames_level)
-df_moex_previous <- get_NormalDist(df_daily = df_profit_total,
-                                   vColName = vColNames,
-                                   sliding_depth = 50, 
-                                   slidind_return = c(10,25,50))
-df_moex_previous$date <- df_profit_total$date
-
-df_moex_previous <- readRDS(paste0('./data/vote/df_moex.rds'))
-```
-
-```{r}
-View(df_moex_previous[,c("date","capitalization_RTSTR_mean_Pr_10")])
-View(df_profitPr[,c("date","capitalization_RTSTR_mean_Pr_10")])
-View(df_profit_total[,c("date","capitalization_RTSI")])
-
-```
-
-
-```{r}
-df_NA <- merge(df_profit_total,df_moex_previous, all.x = T, by = 'date')
-get_nona_variables <- function(df_NA) {
+get_nona_variables <- function(df_NA, start_date = ymd('20190101'), end_date = ymd('20200401')) {
   vVariables <- unique(names(df_NA))
   vVariables <- vVariables[which(vVariables != 'date')]
-  index <- which((df_NA$date > ymd('20190101')) & (df_NA$date < ymd('20200401')))
+  index <- which((df_NA$date > start_date) & (df_NA$date < end_date))
   
   l_topVars_NA <- list()
 for (vTopVar in vVariables) {
@@ -120,8 +80,9 @@ index <- (df_topVars_NA$n_NA < 50)
 
 vVariables <- df_topVars_NA[index,'Var']
 }
-vVariables <- get_nona_variables(df_NA)
 ```
+
+# Data
 
 ```{r}
 df_strategy <- read.csv("./data/strategy/strategy.csv",
@@ -129,51 +90,46 @@ df_strategy <- read.csv("./data/strategy/strategy.csv",
                                        rep("numeric",6),rep("factor",3)))
 
 vStrategiesAll <- unique(df_strategy$strategy)
+vStrategies <- as.character(vStrategiesAll[20])
 ```
 
-```{r}
-df_strategy %>%
-  group_by(strategy) %>%
-  summarise(profit = mean(profit, rm.na = T)) %>%
-  arrange(desc(profit))
+```{r, warning=FALSE, message=FALSE}
+df_profit_total <- get_WorkSet(vStrategies)
+vVariables <- get_nona_variables(df_profit_total)
+
+# vColNames <- c('entryprice','exitprice',
+#                'value_IMOEX','value_MOEX10','value_MOEXFN','value_RTSI',
+#                'capitalization_RTSI','capitalization_RTSTR','capitalization_RTSTRN','capitalization_RTSTRR')
+# df_level <- get_level_value(df_profit_total,vColNames)
+# df_profit_total[,paste0(vColNames,'_level')] <- df_level
+
+#vColNames_level <- paste0(vColNames,'_level')
+vColNames <- c('value_IMOEX','value_MOEX10','value_MOEXFN','value_RTSI',
+               'capitalization_RTSI','capitalization_RTSTR','capitalization_RTSTRN','capitalization_RTSTRR',
+               "diffHL_IMOEX","diffOC_IMOEX","diffOL_IMOEX","diffHO_IMOEX",
+               "diffHL_MOEX10","diffOC_MOEX10","diffOL_MOEX10","diffHO_MOEX10",
+               "diffHL_MOEXFN","diffOC_MOEXFN","diffOL_MOEXFN","diffHO_MOEXFN",
+               "diffHL_RTSI","diffOC_RTSI","diffOL_RTSI","diffHO_RTSI")
+df_moex_previous <- get_NormalDist(df_daily = df_profit_total,
+                                   vColName = vColNames,
+                                   sliding_depth = 50, 
+                                   slidind_return = c(10,25,50))
+df_moex_previous$date <- df_profit_total$date
+
+#df_moex_previous <- readRDS(paste0('./data/vote/df_moex.rds'))
 ```
-
-```{r}
-df_vote_train_summary_parallel %>%
-  filter(prob0_up > -3) %>%
-        group_by(n) %>%
-        summarise(n(),
-                  mean(prob0_up))
-
-l_str_save$l_lev1$test %>%
-   filter(date < ymd('20200401'),
-        date > start_date) %>%
-  group_by(MA, n) %>%
-  summarise(n())
-```
-
-
 
 Previos MA by vColNames
 ```{r, warning=FALSE, message=FALSE}
-vStrategies <- c("SL_14_18_RTS_Int02",'SL_14_18_RTS_Int015',"SL_14_18_RTS_Int01","SL_14_18_RTS_Int005",'SL_14_18_RTS_Int001')
-
-# vStrategy <- 'SL_18_22_RTS_Int003'
-# 
-# df_profit_total <- get_WorkSet(vStrategy)
-# df_profit_total <- df_profit_total[,1:11]
-# start_date <- dmy('01012017')
-# stop_date <- max(df_profit_total$date)
-
-# vStrategy <- 'SL_14_18_RTS_Int02'
-for (vStrategy in vStrategies[5]) {
+knn_k <- 90
+for (vStrategy in vStrategies) {
   # data
   # df_profit <- get_WorkSet(vStrategy)
   df_profit_total <- get_WorkSet(vStrategy)
   df_profit_total <- df_profit_total[,1:11]
-  vColNames <- c('entryprice','exitprice')
-  df_level <- get_level_value(df_profit_total,vColNames)
-  df_profit_total[,vColNames] <- df_level
+  # vColNames <- c('entryprice','exitprice')
+  # df_level <- get_level_value(df_profit_total,vColNames)
+  # df_profit_total[,vColNames] <- df_level
 
   start_date <- dmy('01012017')
   stop_date <- min(c(max(df_profit_total$date),max(df_moex_previous$date)))
@@ -287,7 +243,7 @@ if (is.null(l_str_save['l_topVars'][[1]])) {
   l_topVars <- list()
   l_str_save['topVars_date'] <- list(topVars_date)
   
-  vProfitsNext <- c(20,25,30,35)
+  vProfitsNext <- c(3,4,5,6)
         for (vProfitNext in vProfitsNext) {
                 
                 df_profitPr <- df_profitPrAll
@@ -317,7 +273,7 @@ if (is.null(l_str_save['l_topVars'][[1]])) {
                 }
                 
                 # Shoose varibels
-                df_topVars <- get_topVars(l_vars = l_vars)
+                df_topVars <- get_topVars(l_vars = l_vars,quan_min_max = 0.7,quan_min_max_scater = 0.7)
                 l_topVars[as.character(vProfitNext)] <- list(df_topVars)
         }
   l_str_save['l_topVars'] <- list(l_topVars)
@@ -339,7 +295,7 @@ if (is.null(l_str_save['l_lev1'][[1]])) {
                 df_profitPr <- df_profitPrAll
                 df_profitPr[,'profit'] <- df_profit_forvard[,paste0('profit_mean_Next_',topVars_name)]
                 #undebug(get_vote_train_summary_parallel)
-                df_vote_train_summary_parallel <- get_vote_train_summary_parallel(df_profitPr = df_profitPr,
+                df_vote_train_summary_parallel <- get_vote_train_summary_parallel_new(df_profitPr = df_profitPr,
                                                                                   df_topVars = df_topVars,
                                                                                   date = l_str_save$topVars_date[1],
                                                                                   days_lag = days_lag, paralleling = TRUE,
@@ -447,8 +403,9 @@ if (is.null(l_str_save['l_lev2'][[1]])) {
                 df_lev1_train <- l_str_save$l_lev1$train[lev1_name][[1]]
                 df_lev1_test  <- l_str_save$l_lev1$test
                 index_test_lev1 <- which(df_lev1_test$MA == lev1_name)
-                df_lev1_test <- df_lev1_test[index_test_lev1,c('date','prob0_up_sd','prob0_down_sd','scater_prob0_up',
-                                                               'scater_prob0_down','prob0_up','prob0_down','n')]
+                # df_lev1_test <- df_lev1_test[index_test_lev1,c('date','prob0_up_sd','prob0_down_sd','scater_prob0_up',
+                #                                                'scater_prob0_down','prob0_up','prob0_down','n')]
+                df_lev1_test <- df_lev1_test[index_test_lev1,names(df_lev1_train)]
                 df_lev1 <- rbind(df_lev1_train,df_lev1_test)
                 vVars = c('prob0_up','prob0_up_sd','scater_prob0_up')
                 df_lev1 <- df_lev1[,c('date',vVars)]
@@ -485,8 +442,9 @@ if (is.null(l_str_save['l_lev2'][[1]])) {
                 df_lev1_train <- l_str_save$l_lev1$train[lev1_name][[1]]
                 df_lev1_test  <- l_str_save$l_lev1$test
                 index_test_lev1 <- which(df_lev1_test$MA == lev1_name)
-                df_lev1_test <- df_lev1_test[index_test_lev1,c('date','prob0_up_sd','prob0_down_sd','scater_prob0_up',
-                                                               'scater_prob0_down','prob0_up','prob0_down','n')]
+                # df_lev1_test <- df_lev1_test[index_test_lev1,c('date','prob0_up_sd','prob0_down_sd','scater_prob0_up',
+                #                                                'scater_prob0_down','prob0_up','prob0_down','n')]
+                df_lev1_test <- df_lev1_test[index_test_lev1,names(df_lev1_train)]
                 df_lev1 <- rbind(df_lev1_train,df_lev1_test)
                 vVars = c('prob0_up','prob0_up_sd','scater_prob0_up')
                 df_lev1 <- df_lev1[,c('date',vVars)]
@@ -530,13 +488,13 @@ if (is.null(l_str_save['l_lev2'][[1]])) {
 ##########
 ## Lev3
 ##########
-  #undebug(count_lev3)
+  undebug(count_lev3)
   l_lev3 <- count_lev3(l_str_save = l_str_save)
   l_str_save['df_lev3'] <- list(l_lev3$df_lev3)
   l_str_save['l_npv']   <- list(l_lev3$l_npv)
 }
 
-saveRDS(l_str_save, file = paste0("./data/vote/",l_str_save$stratagy_name,".rds"))
+saveRDS(l_str_save, file = paste0("./data/vote/",'debug',l_str_save$stratagy_name,".rds"))
 }
 ```
 
@@ -548,7 +506,7 @@ l_str_save['last_work_date'] <- list(start_date-1)
 l_str_save['df_lev3'] <- NULL
 l_str_save['l_npv'] <- NULL
 
-l_str_save <- readRDS(paste0("./data/vote/",'base_SL_14_18_RTS_Int005.rds'))
+l_str_save <- readRDS(paste0("./data/vote/",'debugSL_18_22_RTS_Int01.rds'))
 debug(count_lev3)
 l_lev3 <- count_lev3(l_str_save = l_str_save,only_workdate = TRUE)
 df_lev3 <- l_lev3$df_lev3
@@ -559,7 +517,7 @@ df_lev3 <- l_lev3$df_lev3
 
 l_str_save[['df_lev3']] %>%
  filter(date > start_date, date < ymd('20200401')) %>%
-  group_by(vote >= 0, npv >= 0) %>%
+  group_by(vote >= 12, npv >= 0) %>%
   summarise(sum(profit, na.rm = T),n(),mean(npv))
 ```
 
@@ -772,15 +730,23 @@ l_strategies[vStrategy] <- list(df_strategy_vote)
 #                                           df_profit = df_profitPr[index,])
 ```
 
+# Read l_str_save
 
 ```{r, warning=FALSE, message=FALSE}
 source("./scripts/count_lev3.r")
 vFiles <- list.files("./data/vote/")
 l_strategies <- list()
+l_df_lev3 <- list()
+l_k_topVars <- 
 stoplevel <- 0
 for(vFile in vFiles) {
   l_str_save <- readRDS(paste0("./data/vote/",vFile))
   df_lev3 <- l_str_save[['df_lev3']]
+  df_lev3 <- merge(df_lev3, l_str_save$df_profit[,c("date","position")], by = 'date', all.x = T)
+  
+
+  
+  
   #debug(count_lev3)
   #l_lev3 <- count_lev3(l_str_save = l_str_save,only_workdate = FALSE)
   #df_lev3 <- l_lev3$df_lev3
@@ -789,129 +755,184 @@ for(vFile in vFiles) {
   #df_lev3$stoplevel <- stoplevel
   
   if (grepl("m", vFile) == T) {
-    df_lev3$type <- 'mod'
-  } else {
-    df_lev3$type <- 'base'
+    df_lev3$type <- 'knn_100'
+    } 
+  if(grepl("knn_70", vFile) == T)  {
+      df_lev3$type <- 'knn_70'
+      } 
+  if(grepl("knn_80", vFile) == T)  {
+        df_lev3$type <- 'knn_80'
+        } 
+  if(grepl("knn_90", vFile) == T)  {
+          df_lev3$type <- 'knn_90'
   }
-  l_strategies[vFile] <- list(df_lev3)
-
-# df_lev2_train <- l_str_save$l_lev2$train[['20']]
-# df_lev2_test <- l_str_save$l_lev2$test[which(l_str_save$l_lev2$test$MA == '20'), c("date","profit_pred")]
-# df_lev2_20 <- rbind(df_lev2_train,df_lev2_test)
-# colnames(df_lev2_20) <- c('date', 'pred_20')
-# 
-# df_lev2_train <- l_str_save$l_lev2$train[['25']]
-# df_lev2_test <- l_str_save$l_lev2$test[which(l_str_save$l_lev2$test$MA == '25'), c("date","profit_pred")]
-# df_lev2_25 <- rbind(df_lev2_train,df_lev2_test)
-# colnames(df_lev2_25) <- c('date', 'pred_25')
-# 
-# df_lev2_train <- l_str_save$l_lev2$train[['30']]
-# df_lev2_test <- l_str_save$l_lev2$test[which(l_str_save$l_lev2$test$MA == '30'), c("date","profit_pred")]
-# df_lev2_30 <- rbind(df_lev2_train,df_lev2_test)
-# colnames(df_lev2_30) <- c('date', 'pred_30')
-# 
-# df_lev2_train <- l_str_save$l_lev2$train[['35']]
-# df_lev2_test <- l_str_save$l_lev2$test[which(l_str_save$l_lev2$test$MA == '35'), c("date","profit_pred")]
-# df_lev2_35 <- rbind(df_lev2_train,df_lev2_test)
-# colnames(df_lev2_35) <- c('date', 'pred_35')
-# 
-# df_lev2 <- merge(l_str_save$df_profit[,c("date","profit")], df_lev2_20, all.x = T, by = 'date')
-# df_lev2 <- merge(df_lev2, df_lev2_25, all.x = T, by = 'date')
-# df_lev2 <- merge(df_lev2, df_lev2_30, all.x = T, by = 'date')
-# df_lev2 <- merge(df_lev2, df_lev2_35, all.x = T, by = 'date')
-# 
-# df <- df_lev2
-# df <- na.omit(df)
-# 
-#   index_tain <- df$date < (l_str_save$topVars_date)
-#   index_predict <- which(df$date > l_str_save$topVars_date)
-#     
-#   l <- create_X_y(df = df,
-#                   train_index = index_tain,
-#                   test_index = index_predict,
-#                   vVars = c('pred_20','pred_25','pred_30','pred_35'))
-#   
-#   knn_test  <- knn.reg(train=l$X_train, y=l$y_train, test=l$X_test, k=50)
-#   df[index_predict,'profit_pred'] <- knn_test[['pred']]
-#   
-#   knn_train  <- knn.reg(train=l$X_train, y=l$y_train, test=l$X_train, k=50)
-#   df[index_tain,'profit_pred'] <- knn_train[['pred']]
-# 
-# df_lev2$profit_pred = apply(df_lev2[,c('pred_20','pred_25','pred_30','pred_35')], 1, mean, na.rm = T)
-# 
-# df_lev2$strategy <- vFile
-# l_strategies[vFile] <- list(df_lev2)
-# 
-# print(
-# ggplot(data = df_lev2) +
-#   geom_point(aes(x = profit, y = profit_pred))
-# )
-
+  if(grepl("10_14", vFile) == T)  {
+          df_lev3$type <- '10_14'
+  }
+   if(grepl("14_18", vFile) == T)  {
+          df_lev3$type <- '14_18'
+   }
+     if(grepl("18_22", vFile) == T)  {
+          df_lev3$type <- '18_22'
+          }
+  l_df_lev3[vFile] <- list(df_lev3)
+  l_strategies[vFile] <- list(l_str_save)
+  
+  
+  
 }
-df_strategies <- do.call(rbind,l_strategies)
+df_strategies <- do.call(rbind,l_df_lev3)
 ```
 
 
-```{r, warning=FALSE, message=FALSE}
-l_best_test_vote_level <- list()
-for (vote_level in 0:12) {
-df_best_test_vote_level <- df_strategies %>%
+
+
+
+
+
+
+
+```{r}
+vote_level <- 12
+df_strategies %>%
  filter(date < ymd('20200401'),
-        #date < start_date
+        date > start_date,
+        #type == '18_22',
         ) %>%
   mutate(profit_ma = if_else(vote >= vote_level, profit, 0),
          n_ma = if_else(vote >= vote_level, 1, 0)) %>%
   group_by(strategy,
            test = date > start_date,
+           position
            #year(date)
            ) %>%
-  summarise(pr = sum(profit, na.rm = T),
-            pr_up = sum(profit_ma, na.rm = T),
-            pr_diff = (pr_up - pr),
+  summarise(#pr = sum(profit, na.rm = T),
+            #pr_up = sum(profit_ma, na.rm = T),
+            #pr_diff = (pr_up - pr),
+            m_pr = round(mean(profit, na.rm = T),4),
+            m_pr_up = round(mean(profit_ma, na.rm = T),4),
+            m_pr_diff = (m_pr_up - m_pr),
             n(),
             n_ma = sum(n_ma, na.rm = T),
             vote_level)
-
-l_best_test_vote_level[vote_level] <- list(df_best_test_vote_level)
-}
-df_best_test_vote_level <- do.call(rbind, l_best_test_vote_level)
-df_best_test_vote_level <- df_best_test_vote_level %>%
-  group_by(strategy) %>%
-  mutate(max_pr_diff = max(pr_diff)) %>%
-  arrange(strategy, desc(pr_diff)) %>%
-  filter(pr_diff == max_pr_diff) %>%
-  mutate(best_vote_lev = vote_level) %>%
-  select(strategy,best_vote_lev)
-
-df_strategies <- merge(df_strategies,df_best_test_vote_level, all.x = T, by = 'strategy')
 ```
 
 ```{r}
-vote_level <- 7
-df_strategies %>%
- filter(date < ymd('20200401'),
-        #date > start_date
-        ) %>%
-  mutate(profit_ma = if_else(vote >= best_vote_lev, profit, 0),
-         n_ma = if_else(vote >= best_vote_lev, 1, 0)) %>%
-  group_by(type,
-           test = date > start_date,
-           #year(date)
-           ) %>%
-  summarise(pr = sum(profit, na.rm = T),
-            pr_up = sum(profit_ma, na.rm = T),
-            pr_diff = (pr_up - pr),
-            n(),
-            n_ma = sum(n_ma, na.rm = T),
-            vote_level)
+vFiles
+```
+
+# Plot debuging
+
+```{r}
+branch <- "./plots/debug/"
+for(vFile in vFiles[2]) {
+df_lev1_test <- l_strategies[[vFile]]$l_lev1$test
+index <- which(df_lev1_test$MA == "30")
+
+df_lev1_train <- l_strategies[[vFile]]$l_lev1$train$`30`
+df_lev1 <- rbind(df_lev1_train, df_lev1_test[index,colnames(df_lev1_train)])
+
+
+df_profit <- l_strategies[[vFile]]$df_lev3
+
+df_lev2_test <- l_strategies[[vFile]]$l_lev2$test
+index <- which(df_lev2_test$MA == "30")
+df_lev2_train <- l_strategies[[vFile]]$l_lev2$train$`30`
+df_lev2 <- rbind(df_lev2_train, df_lev2_test[index,colnames(df_lev2_train)])
+
+df_ggplot <- merge(df_lev1, df_profit[,c("date","profit",'vote', 'npv')], all.x = T, by = 'date')
+df_ggplot <- merge(df_ggplot, df_lev2[,c("date","profit_pred")], all.x = T, by = 'date')
+
+df_ggplot <- df_ggplot %>%
+  mutate(profit_cum = if_else(is.na(profit),0,profit),
+         profit_pred = if_else(is.na(profit_pred),0,profit_pred),
+         profit_l2 = if_else(vote >= 12, profit_cum ,0)) %>%
+  mutate(profit_cum = cumsum(profit_cum)) %>%
+  mutate(profit_cum_l2 = cumsum(profit_l2))
+
+sGGplot <- df_ggplot %>%
+  ggplot() +
+  geom_point(aes(x = date, y = profit_cum)) +
+  geom_point(aes(x = date, y = profit_cum_l2), color = 'green', alpha = 0.1) +
+  geom_point(aes(x = date, y = profit_pred*1000), color = 'brown4', alpha = 0.5) +
+  geom_point(aes(x = date, y = prob0_up*100), color = 'blue', alpha = 0.1) +
+  geom_point(aes(x = date, y = prob0_up_sd*500), color = 'red', alpha = 0.5) +
+  geom_point(aes(x = date, y = vote), color = 'purple', alpha = 0.1) +
+  geom_vline(xintercept = start_date) +
+  ylim(-100,200) +
+  ggtitle(vFile)
+
+print(sGGplot)
+
+
+saveGGplot(sGGplot,branch,paste0(vFile),width = 1600, height = 1200)
+}
+opendir(branch)
+```
+```{r}
+df_ggplot_vPred <- get_NormalDist(df_daily = df_ggplot,
+                                  vColName = 'prob0_up',
+                                  sliding_depth = 20,
+                                  slidind_return = c(2,20))[,1:2]
+df_ggplot[,'diff'] <- df_ggplot_vPred[,1]-df_ggplot_vPred[,2]
+
+#df_ggplot_debug <- merge(df_ggplot, df_debug_vPred, by = 'date', all.x = T)
+
+df_ggplot %>%
+  filter(date < ymd('20200401'),
+         date > start_date
+         ) %>%
+  ggplot() +
+  geom_point(aes(x = date, y = vPred*100+100), alpha = 0.5, color = 'blue') +
+  geom_point(aes(x = date, y = vote+50), alpha = 0.5) +
+  geom_point(aes(x = date, y = profit_cum), alpha = 0.5, color = 'red')
+
+df_ggplot %>%
+  filter(date < ymd('20200401'),
+         date > start_date,
+         diff > 0
+         ) %>%
+  #group_by(year(date)) %>%
+  summarise(sum(profit, na.rm = T))
+```
+
+```{r}
+names(l_str_save$df_profit_previous)
+names(l_str_save$df_profit)
+```
+
+```{r}
+merge(do.call(cbind,list(l_str_save$df_profit_previous,
+                   l_str_save$df_profit_forvard)),
+                   df_ggplot,
+      by = 'date', all.x = T) %>%
+  ggplot() +
+  geom_point(aes(x = date, y = MAE_sd_Pr_50), alpha = 0.5, color = 'blue') +
+  geom_point(aes(x = date, y = profit_mean_Next_25))
+```
+
+
+```{r}
+merge(do.call(cbind,list(l_str_save$df_profit_previous,
+                   l_str_save$df_profit_forvard)),
+                   df_ggplot,
+      by = 'date', all.x = T) %>%
+  filter(date < ymd('20200401')) %>%
+  ggplot() +
+  geom_point(aes(x = profit_mean_Next_25, y = entryprice_mean_Pr_25, color = date > start_date), alpha = 0.5)
+```
+
+```{r}
+vFiles[2]
 ```
 
 
 ```{r}
 source("./scripts/saveGGplot.r")
 branch <- "./plots/vote/"
-for(vFile in vFiles) {
-  for (vote_level in 0:12) {
+for(vFile in vFiles[2]) {
+  #if(grepl("10_14", vFile) == F)  {next}
+  for (vote_level in -12:12) {
 
 df_all <- df_strategies %>%
   filter(strategy == vFile,
@@ -920,7 +941,13 @@ df_all <- df_strategies %>%
          vyear = year(date)) %>%
   mutate(profit_cum = if_else(is.na(profit),0,profit),
          lev2 = if_else(is.na(lev2),0,lev2),
-         profit_l2 = if_else(lev2 >= vote_level, profit_cum ,0)) %>%
+         profit_l2 = if_else(lev2 >= vote_level, profit_cum ,0),
+         # profit_l2_pr1 = lag(profit_l2),
+         # profit_l2_pr2 = lag(profit_l2_pr1),
+         # profit_l2_pr3 = lag(profit_l2_pr2),
+         # profit_l2 = if_else((profit_l2_pr1+profit_l2_pr2+profit_l2_pr3) >= -0.4, profit_l2, 0),
+         # profit_l2 = if_else(is.na(profit_l2),0,profit_l2)
+         ) %>%
   mutate(profit_cum = cumsum(profit_cum),
          lev2_cum = cumsum(lev2),
          profit_cum_l2 = cumsum(profit_l2),
@@ -957,12 +984,13 @@ tt_test <- length(which(df_test$lev2 >= vote_level))/nrow(df_test)*100
     annotate(geom="text", x=ymd('20110601'), y=90, 
              label=paste0("Test trade time: ",round(tt_test,1),'%'))
 
-      saveGGplot(sGGplot,branch,paste0(vFile,'_vl_',vote_level))
+      saveGGplot(sGGplot,branch,paste0(vFile,'_vl_',vote_level),width = 1600, height = 1200)
   }
 }
 opendir(branch)
 ```
 
+# Strategy work together
 
 ```{r}
 vote_level <- 10
@@ -1194,13 +1222,128 @@ grid.arrange(gg_total_profit, gg_total_profit_model, ncol = 1)
 ```
 
 
+# Python applying
+
+```{r}
+library(reticulate)
+use_condaenv("r-reticulate")
+repl_python()
+reticulate::py_config()
+```
+```{python}
+import pandas as pd
+import scipy as scipy 
+import numpy as np 
+import mpl_toolkits.axes_grid1.inset_locator as mpl_il 
+import scipy.stats as st
+from datetime import datetime
+```
+
+```{python}
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+from sklearn.manifold import MDS
+from sklearn.manifold import TSNE
+```
+```{r}
+df_profitPrAll_nona <- na.omit(df_profitPrAll)
+df_profitPrAll_nona <- df_profitPrAll_nona[,!(names(df_profitPrAll_nona) %in% c(paste0("profit_mean_Next_",2:50)))]
+
+X_profit_py <- df_profitPrAll_nona[,!(names(df_profitPrAll_nona) %in% c('date','profit'))]
+Y_profit_py <- df_profitPrAll_nona[,(names(df_profitPrAll_nona) %in% c('profit'))]
+date_profit_py <- df_profitPrAll_nona[,(names(df_profitPrAll_nona) %in% c('date'))]
+
+colnames(df_profitPrAll_nona)
+```
+
+
+```{python}
+X_profit = np.array(r.X_profit_py)
+# Before applying PCA, each feature should be centered (zero mean) and with unit variance
+X_normalized = StandardScaler().fit(X_profit).transform(X_profit)  
 
 
 
+#mds = MDS(n_components = 2)
+#X_mds = mds.fit_transform(X_normalized)
+
+# tsne = TSNE(method='exact',n_components = 10)
+# X_tsne = tsne.fit_transform(X_normalized)
+# 
+# pca = PCA(n_components = 2).fit(X_tsne)
+# X_pca = pca.transform(X_tsne)
+```
+```{python}
+from sklearn.cluster import KMeans
+from sklearn.cluster import AgglomerativeClustering
+from sklearn.preprocessing import MinMaxScaler
+
+X_Scaler = MinMaxScaler().fit(X_profit).transform(X_profit)  
+
+kmeans = KMeans(n_clusters = 10)
+kmeans.fit(X_Scaler)
+
+clusters = kmeans.labels_
+
+cls = AgglomerativeClustering(n_clusters = 10)
+cls_assignment = cls.fit_predict(X_Scaler)
+```
 
 
+```{r}
+df <- as.data.frame(py$X_pca)
+df$profit <- Y_profit_py
+df$date <- date_profit_py
+df$cluster <- py$cls_assignment
 
+df %>%
+  ggplot() +
+  geom_point(aes(x = date, y = profit, color = as.factor(cluster)))# +
+  #scale_color_gradient2(midpoint=0, limit = c(-2,2), space = "Lab",
+  #                     low="red", mid="white", high="green")
 
+df %>%
+  group_by(cluster) %>%
+  summarise(mp = mean(profit),
+            n(),
+            sum(profit)) %>%
+  arrange(desc(mp),cluster)
+```
+
+```{python}
+cls = AgglomerativeClustering(n_clusters = 15)
+```
+
+```{r}
+for (index_end in 700:1488) {
+X_profit_py <- df_profitPrAll_nona[1:index_end,!(names(df_profitPrAll_nona) %in% c('date','profit','predict_cl_profit'))]
+Y_profit_py <- df_profitPrAll_nona[1:index_end,(names(df_profitPrAll_nona) %in% c('profit'))]
+date_profit_py <- df_profitPrAll_nona[1:index_end,(names(df_profitPrAll_nona) %in% c('date'))]
+
+py_run_string("X_profit = np.array(r.X_profit_py)")
+py_run_string("X_Scaler = MinMaxScaler().fit(X_profit).transform(X_profit)")
+py_run_string("cls_assignment = cls.fit_predict(X_Scaler)")
+
+df <- data.frame('profit' = Y_profit_py,
+                 'cluster' = py$cls_assignment)
+index <- which(df$cluster == df[nrow(df),'cluster'])
+df_profitPrAll_nona[index_end,'predict_cl_profit'] <- mean(df[index,"profit"])
+}
+```
+
+```{r}
+df_profitPrAll_nona %>%
+  group_by(predict_cl_profit > 0) %>%
+  summarise(mp = mean(profit),
+            n(),
+            sum(profit))
+```
+
+```{r}
+df_profitPrAll_nona %>%
+  ggplot() +
+  geom_point(aes(x = date, y = profit, color = as.factor(predict_cl_profit > 0)))
+```
 
 
 
